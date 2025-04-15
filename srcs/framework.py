@@ -90,23 +90,38 @@ def validate_regex_patterns(regex_patterns):
             print(f"유효하지 않은 패턴: {pattern} - 오류: {e}")
     return valid_patterns
 
-def extract_endpoints(root_directory, extensions, regex_patterns):
+def extract_endpoints(root_directory, extensions, endpoint_patterns):
     """주어진 디렉토리에서 엔드포인트를 추출합니다."""
-    # 유효한 패턴만 사용
-    valid_patterns = validate_regex_patterns(regex_patterns)
+    valid_patterns = {}
+    for method, pattern in endpoint_patterns.items():
+        try:
+            re.compile(pattern)  # 패턴 컴파일 시도
+            valid_patterns[method] = pattern
+        except re.error as e:
+            print(f"유효하지 않은 패턴 ({method}): {pattern} - 오류: {e}")
+
     if not valid_patterns:
         print("유효한 정규 표현식 패턴이 없습니다.")
-        return []
+        return {}
 
     all_files = get_all_extension_files(root_directory, extensions)
-    endpoints = []
+    endpoints_by_file = {}
+
     for file_path in all_files:
         with open(file_path, "r") as file:
             code = file.read()
-            for pattern in valid_patterns:
+            file_endpoints = {}
+            for method, pattern in valid_patterns.items():
+                # 매칭된 경로만 추출
                 matches = re.findall(pattern, code)
-                endpoints.extend(matches)
-    return endpoints
+                if matches:
+                    if method not in file_endpoints:
+                        file_endpoints[method] = []
+                    file_endpoints[method].extend(matches)
+            if file_endpoints:  # 해당 파일에서 엔드포인트가 발견된 경우만 추가
+                endpoints_by_file[file_path] = file_endpoints
+
+    return endpoints_by_file
 
 
 def main():
@@ -136,9 +151,14 @@ def main():
     print("엔드포인트 패턴:", endpoint_patterns)
 
     # Step 5: extract endpoints
-    endpoints = extract_endpoints(root_directory, extensions, endpoint_patterns)
-    input()
-    print("추출된 엔드포인트:", endpoints)
+    endpoints_by_file = extract_endpoints(root_directory, extensions, endpoint_patterns)
+    print("\n추출된 엔드포인트:")
+    for file_path, endpoints in endpoints_by_file.items():
+        print(f"파일: {file_path}")
+        for method, paths in endpoints.items():
+            print(f"  {method}:")
+            for path in paths:
+                print(f"    - {path}")
 
 if __name__ == "__main__":
     main()
