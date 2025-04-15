@@ -1,0 +1,144 @@
+import os
+import json
+import re
+from llm import ask_chatgpt
+
+def list_all_dirs(root_dir):
+    """하위 모든 디렉토리와 파일을 리스트로 반환합니다."""
+    all_items = []
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        for dirname in dirnames:
+            all_items.append(os.path.join(dirpath, dirname))
+    return all_items
+
+def list_all_files(root_dir):
+    """하위 모든 파일을 리스트로 반환합니다."""
+    all_items = []
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        for filename in filenames:
+            all_items.append(os.path.join(dirpath, filename))
+    return all_items
+
+def parse_result(res):
+    """ChatGPT의 응답을 파싱합니다."""
+    try:
+        parsed = json.loads(res)
+        return parsed.get("result", "No result found")
+    except json.JSONDecodeError:
+        return "Failed to parse response"
+
+def check_path_exists(path):
+    """파일 또는 폴더가 존재하는지 확인합니다."""
+    if os.path.exists(path):
+        return True
+    else:
+        return False
+
+def identify_main_folder(root_directory):
+    """identify_main_folder 작업을 수행합니다."""
+    dirs = list_all_dirs(root_directory)
+    res = ask_chatgpt("identify_main_folder", str(dirs))
+    return parse_result(res)
+
+def identify_main_source(folder_path):
+    """identify_main_source 작업을 수행합니다."""
+    files = list_all_files(folder_path)
+    res = ask_chatgpt("identify_main_source", str(files))
+    return parse_result(res)
+
+def identify_framework(file_path):
+    """파일 내용을 읽고 identify_framework 작업을 수행합니다."""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+    with open(file_path, "r") as file:
+        code = file.read()
+    res = ask_chatgpt("identify_framework", code)
+    return res
+
+def get_endpoint_patterns(file_path, framework):
+    """파일 내용을 읽고 엔드포인트 패턴을 식별합니다."""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+    with open(file_path, "r") as file:
+        code = file.read()
+    prompt = {
+        "file_path": file_path,
+        "code": code,
+        "framework": framework
+    }
+    
+    res = ask_chatgpt("how_to_reconginize_endpoint", str(prompt))
+    return parse_result(res)
+
+def get_all_extension_files(root_directory, extensions):
+    """특정 확장자를 가진 모든 파일을 찾습니다."""
+    all_files = []
+    for dirpath, dirnames, filenames in os.walk(root_directory):
+        for filename in filenames:
+            if any(filename.endswith(ext) for ext in extensions):
+                all_files.append(os.path.join(dirpath, filename))
+    return all_files
+
+def validate_regex_patterns(regex_patterns):
+    """정규 표현식 패턴의 유효성을 검사합니다."""
+    valid_patterns = []
+    for pattern in regex_patterns:
+        try:
+            re.compile(pattern)  # 패턴 컴파일 시도
+            valid_patterns.append(pattern)
+        except re.error as e:
+            print(f"유효하지 않은 패턴: {pattern} - 오류: {e}")
+    return valid_patterns
+
+def extract_endpoints(root_directory, extensions, regex_patterns):
+    """주어진 디렉토리에서 엔드포인트를 추출합니다."""
+    # 유효한 패턴만 사용
+    valid_patterns = validate_regex_patterns(regex_patterns)
+    if not valid_patterns:
+        print("유효한 정규 표현식 패턴이 없습니다.")
+        return []
+
+    all_files = get_all_extension_files(root_directory, extensions)
+    endpoints = []
+    for file_path in all_files:
+        with open(file_path, "r") as file:
+            code = file.read()
+            for pattern in valid_patterns:
+                matches = re.findall(pattern, code)
+                endpoints.extend(matches)
+    return endpoints
+
+
+def main():
+    """메인 실행 함수."""
+    root_directory = "../target/Piggy-bank/sources/com/teamsa/"  # 분석할 루트 디렉토리
+
+    # Step 1: identify_main_folder
+    main_folder = identify_main_folder(root_directory)
+    if not check_path_exists(main_folder):
+        return
+    print("identify_main_folder 결과:", main_folder)
+
+    # Step 2: identify_main_source
+    main_source = identify_main_source(main_folder)
+    if not check_path_exists(main_source):
+        return
+    extension = main_source.split(".")[-1]
+    extensions = [f".{extension}"]
+    print("identify_main_source 결과:", main_source)
+
+    # Step 3: analyze the main source file
+    framework_result = identify_framework(main_source)
+    print("최종 분석 결과:", framework_result)
+
+    # Step 4: get endpoint patterns
+    endpoint_patterns = get_endpoint_patterns(main_source, framework_result)
+    print("엔드포인트 패턴:", endpoint_patterns)
+
+    # Step 5: extract endpoints
+    endpoints = extract_endpoints(root_directory, extensions, endpoint_patterns)
+    input()
+    print("추출된 엔드포인트:", endpoints)
+
+if __name__ == "__main__":
+    main()

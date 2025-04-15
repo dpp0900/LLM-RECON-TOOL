@@ -1,3 +1,32 @@
+class Service:
+    def __init__(self, name: str, path: str, main_source: str, framework: str):
+        self.name = name
+        self.path = path
+        self.main_source = main_source
+        self.framework = framework
+        self.endpoints = []
+        self.database = None
+        self.dependencies = DependencyGraph()
+        
+    def add_endpoint(self, endpoint: Endpoint):
+        """엔드포인트를 추가합니다."""
+        self.endpoints.append(endpoint)
+        self.dependencies.add_dependency(self.name, endpoint.endpoint)
+    def remove_endpoint(self, endpoint: Endpoint):
+        """엔드포인트를 제거합니다."""
+        if endpoint in self.endpoints:
+            self.endpoints.remove(endpoint)
+            self.dependencies.remove_dependency(self.name, endpoint.endpoint)
+    def set_database(self, database: Database):
+        """데이터베이스를 설정합니다."""
+        self.database = database
+        self.dependencies.add_dependency(self.name, database.purpose)
+    def remove_database(self):
+        """데이터베이스를 제거합니다."""
+        if self.database:
+            self.dependencies.remove_dependency(self.name, self.database.purpose)
+            self.database = None
+
 class DependencyGraph:
     def __init__(self):
         """의존성을 그래프로 관리합니다."""
