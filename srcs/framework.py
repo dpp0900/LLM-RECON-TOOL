@@ -161,7 +161,8 @@ def main():
 
     # Step 4: get endpoint patterns
     endpoint_patterns = get_endpoint_patterns(main_source, framework_result)
-    print("엔드포인트 패턴:", endpoint_patterns)
+    for method, pattern in endpoint_patterns.items():
+        print(f"{method} 패턴: {pattern}")
 
     # Step 5: extract endpoints
     endpoints_by_file = extract_endpoints(root_directory, extensions, endpoint_patterns)

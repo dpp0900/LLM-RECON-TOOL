@@ -10,26 +10,22 @@ LLM_ASK_QUERY_TYPE = {
     
     "identify_service_name": '''Your task is to identify the name of the web service based on the provided list of dir and files. Analyze the data carefully to determine the service name. If the service name is not clear, ask for clarification. Provide ONLY the name of the service in the specified format.''',
     
-    "how_to_reconginize_endpoint": '''Your task is to generate a JSON object where each key is an HTTP method (e.g., GET, POST, PUT, DELETE, etc.), and the value is a valid and precise regular expression pattern that can be used to identify endpoints for that method in the provided source code. Follow these rules:
-1. Ensure all patterns are syntactically correct and can be compiled without errors.
-2. Patterns should be general enough to work across multiple programming languages and frameworks (e.g., Java, Python, JavaScript, PHP).
-3. Avoid overly specific patterns that depend on a single framework or language. Your return will be used to identify endpoints in various web service implementations.
-4. Include patterns that match common endpoint definitions, such as:
-   - Annotations (e.g., @GetMapping, @RequestMapping, @Route, @app.route)
-   - Function calls (e.g., app.get(), router.post())
-   - Path definitions (e.g., path('url/', view_function))
-5. Provide the patterns in the following JSON format:
+    "how_to_reconginize_endpoint": '''Your task is to generate a JSON object mapping HTTP methods to regular expression patterns that extract endpoint paths from source code. Follow these instructions:
+
+1. Produce a JSON object with exactly these keys: "ALL", "GET", "POST"
+2. Each value must be a syntactically correct regex pattern that, when applied to source code, returns only the endpoint path (e.g., "/api"). Use capturing groups or optional markers as needed.
+3. The regex patterns should be generic enough to detect endpoint definitions in multiple languages and frameworks (e.g., via annotations like @GetMapping, @RequestMapping, @app.route; function calls like app.get(), router.post(); or route definitions like path('url/', ...)).
+4. The "ALL" key should include patterns for annotations or functions that do not specify a specific HTTP method (e.g., @RequestMapping without a method).
+5. Regex should return only the endpoint path, not the entire line or function signature.
+6. Regex should return single endpoint paths, not lists or arrays.
+7. Do not include any additional text—return only the JSON object.
+
+Example expected format:
 {
-    "ALL": "regex_for_generic_request_mapping"
+    "ALL": "regex_for_generic_request_mapping",
     "GET": "regex_for_get",
     "POST": "regex_for_post",
-    "PUT": "regex_for_put",
-    "DELETE": "regex_for_delete",
-    "PATCH": "regex_for_patch"
-}
-6. The "ALL" key should include patterns for annotations or functions that do not specify a specific HTTP method (e.g., @RequestMapping without a method).
-7. Result of regex must look like "/api".
-8. Do not include any additional text or explanations outside the specified format.'''
+}'''
 ,
 }
 
