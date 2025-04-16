@@ -11,13 +11,13 @@ class Service:
     def add_endpoint(self, endpoint: 'Endpoint'):
         """엔드포인트를 추가합니다."""
         self.endpoints.append(endpoint)
-        self.dependencies.add_dependency(self.name, endpoint.endpoint)
+        self.dependencies.add_dependency(self.name, endpoint.filepath)
 
     def remove_endpoint(self, endpoint: 'Endpoint'):
         """엔드포인트를 제거합니다."""
         if endpoint in self.endpoints:
             self.endpoints.remove(endpoint)
-            self.dependencies.remove_dependency(self.name, endpoint.endpoint)
+            self.dependencies.remove_dependency(self.name, endpoint.filepath)
 
     def set_database(self, database: 'Database'):
         """데이터베이스를 설정합니다."""
@@ -29,6 +29,18 @@ class Service:
         if self.database:
             self.dependencies.remove_dependency(self.name, self.database.purpose)
             self.database = None
+            
+    def describe(self):
+        """Service의 정보를 출력합니다."""
+        return {
+            "name": self.name,
+            "root_directory": self.root_directory,
+            "main_source": self.main_source,
+            "framework": self.framework,
+            "endpoints": [endpoint.describe() for endpoint in self.endpoints],
+            "database": self.database.describe() if self.database else None,
+            "dependencies": self.dependencies.describe(),
+        }
 
 
 class DependencyGraph:
@@ -72,12 +84,13 @@ class DependencyGraph:
 
 
 class Endpoint:
-    def __init__(self, endpoint: str, method: str = "GET", path: str = "/", params: dict = None):
-        self.endpoint = endpoint
+    def __init__(self, filepath: str, method: str = "GET", path: str = "/", params: dict = None):
+        self.filepath = filepath
         self.method = method
         self.path = path
         self.params = params if params else {}
         self.auth_required = False  # 인증 필요 여부
+        self.code = None  # 엔드포인트의 코드
 
     def requires_authentication(self, required: bool):
         """인증 필요 여부를 설정합니다."""
@@ -86,12 +99,20 @@ class Endpoint:
     def describe(self):
         """Endpoint의 정보를 출력합니다."""
         return {
-            "endpoint": self.endpoint,
+            "filepath": self.filepath,
             "method": self.method,
             "path": self.path,
             "params": self.params,
             "auth_required": self.auth_required,
         }
+        
+    def add_param(self, key: str, value: str):
+        """파라미터를 추가합니다."""
+        self.params[key] = value
+    def remove_param(self, key: str):
+        """파라미터를 제거합니다."""
+        if key in self.params:
+            del self.params[key]
 
 
 class Database:

@@ -76,6 +76,7 @@ def get_endpoint_patterns(file_path, framework):
     }
     
     res = ask_chatgpt("how_to_reconginize_endpoint", str(prompt))
+    print("ChatGPT 응답:", res)
     return parse_result(res)
 
 def get_all_extension_files(root_directory, extensions):
@@ -128,8 +129,72 @@ def extract_endpoints(root_directory, extensions, endpoint_patterns):
                     file_endpoints[method].extend(matches)
             if file_endpoints:  # 해당 파일에서 엔드포인트가 발견된 경우만 추가
                 endpoints_by_file[file_path] = file_endpoints
+                print(f"파일 {file_path}에서 엔드포인트 발견: {file_endpoints}")
 
     return endpoints_by_file
+    
+def test_extract_endpoints(root_directory, extensions, endpoint_patterns):
+    """주어진 디렉토리에서 엔드포인트와 해당 소스코드를 추출합니다.
+    소스코드는 현재의 엔드포인트와 다음 엔드포인트 사이의 모든 코드를 의미합니다."""
+    valid_patterns = {}
+    for method, pattern in endpoint_patterns.items():
+        try:
+            re.compile(pattern)  # 패턴 컴파일 시도
+            valid_patterns[method] = pattern
+        except re.error as e:
+            print(f"유효하지 않은 패턴 ({method}): {pattern} - 오류: {e}")
+
+    if not valid_patterns:
+        print("유효한 정규 표현식 패턴이 없습니다.")
+        return {}
+
+    all_files = get_all_extension_files(root_directory, extensions)
+    endpoints_with_code = {}
+
+    for file_path in all_files:
+        with open(file_path, "r") as file:
+            code = file.read()
+            file_endpoints = {}
+
+            # 각 정규식 패턴에 대해 매칭된 위치를 찾음
+            for method, pattern in valid_patterns.items():
+                matches = list(re.finditer(pattern, code))
+                if matches:
+                    file_endpoints[method] = []
+                    for i, match in enumerate(matches):
+                        start = match.start()
+                        end = matches[i + 1].start() if i + 1 < len(matches) else len(code)
+                        endpoint_code = code[start:end].strip()
+                        file_endpoints[method].append({
+                            "endpoint": match.group(),
+                            "code": endpoint_code
+                        })
+                        print(f"엔드포인트 발견: {match.group()} - 코드: {endpoint_code}")
+                        input()
+
+            if file_endpoints:  # 해당 파일에서 엔드포인트가 발견된 경우만 추가
+                endpoints_with_code[file_path] = file_endpoints
+
+    return endpoints_with_code
+
+def parse_path_from_endpoint(endpoints_by_file):
+    """엔드포인트 선언 코드에서 경로를 추출합니다."""
+    RULE = '''(["'])(\/[a-zA-Z0-9_\-\/\.\:\{\}]*)(["'])'''
+    paths_by_file = {}
+    for file_path, endpoints in endpoints_by_file.items():
+        paths_by_file[file_path] = {}
+        for method, endpoint_list in endpoints.items():
+            paths_by_file[file_path][method] = []
+            for endpoint in endpoint_list:
+                match = re.search(RULE, endpoint)
+                if match:
+                    path = match.group(2)
+                    paths_by_file[file_path][method].append(path)
+                else:
+                    print(f"패턴을 찾을 수 없습니다: {endpoint}")
+                    paths_by_file[file_path][method].append(endpoint)
+    return paths_by_file
+
     
 def concat_endpoint_results(endpoints_by_file):
     """ALL 메소드로 반환된 엔드포인트를 GET, POST 엔드포인트와 합치는 작업을 합니다.
@@ -138,18 +203,16 @@ def concat_endpoint_results(endpoints_by_file):
 
     all_endpoints = {}
     for file_path, endpoints in endpoints_by_file.items():
-        basepath = None  # 기본 경로 초기화
+        basepath = None
         if "ALL" in endpoints:
-            # ALL 메소드의 첫 번째 경로를 basepath로 사용
             basepath = endpoints["ALL"][0] if endpoints["ALL"] else None
 
         for method, paths in endpoints.items():
             if method == "ALL":
-                continue  # ALL 메소드는 처리 후 삭제되므로 건너뜀
+                continue
 
-            if paths:  # paths가 비어있지 않은 경우만 처리
+            if paths:
                 for path in paths:
-                    # basepath와 결합된 전체 경로 생성
                     full_path = f"{basepath}{path}" if basepath else path
                     if file_path not in all_endpoints:
                         all_endpoints[file_path] = {}
@@ -158,6 +221,40 @@ def concat_endpoint_results(endpoints_by_file):
                     all_endpoints[file_path][method].append(full_path)
 
     return all_endpoints
+    
+
+def add_endpoint_to_service(service, all_endpoints):
+    """Service 객체에 엔드포인트를 추가합니다."""
+    for file_path, endpoints in all_endpoints.items():
+        for method, paths in endpoints.items():
+            for path in paths:
+                endpoint = model.Endpoint(filepath=file_path, method=method, path=path)
+                service.add_endpoint(endpoint)
+                # print(f"엔드포인트 추가: {endpoint}")
+    # print(service.describe())  # Service 객체의 정보를 출력합니다.
+
+def visualize_dependency_graph(service):
+    """Service 객체의 의존성 그래프를 시각화합니다."""
+    import networkx as nx
+    import matplotlib.pyplot as plt
+
+    # 그래프 데이터 가져오기
+    graph_data = service.dependencies.describe()
+
+    # NetworkX 그래프 생성
+    G = nx.DiGraph()
+    for from_node, to_nodes in graph_data.items():
+        for to_node in to_nodes:
+            G.add_edge(from_node, to_node)
+
+    # 그래프 레이아웃 설정 (spring_layout 사용)
+    pos = nx.spring_layout(G, k=0.5)  # k 값으로 노드 간의 간격 조정
+
+    # 그래프 시각화
+    plt.figure(figsize=(14, 10))  # 그래프 크기 조정
+    nx.draw(G, pos, with_labels=True, node_color="lightblue", font_weight="bold", node_size=2000, arrowsize=20)
+    plt.title("Dependency Graph")
+    plt.show()
 
 def main():
     """메인 실행 함수."""
@@ -191,20 +288,19 @@ def main():
     for method, pattern in endpoint_patterns.items():
         print(f"{method} 패턴: {pattern}")
 
-    # Step 5: extract endpoints
+    # # Step 5: extract endpoints
     endpoints_by_file = extract_endpoints(root_directory, extensions, endpoint_patterns)
-    # print("\n추출된 엔드포인트:")
-    # for file_path, endpoints in endpoints_by_file.items():
-    #     print(f"파일: {file_path}")
-    #     for method, paths in endpoints.items():
-    #         print(f"  {method}:")
-    #         for path in paths:
-    #             print(f"    - {path}")
-    # Step 6: concat endpoint results
-    all_endpoints = concat_endpoint_results(endpoints_by_file)
+    paths_by_file = parse_path_from_endpoint(endpoints_by_file)
+    print("\n엔드포인트 결과:")
+    print(json.dumps(paths_by_file, indent=2))
+    all_endpoints = concat_endpoint_results(paths_by_file)
     print("\n최종 엔드포인트 결과:")
-    print(all_endpoints)
+    print(json.dumps(all_endpoints, indent=2))
         
+    # Step 6: add endpoints to service
+    # add_endpoint_to_service(Service, all_endpoints)
+    
+    # visualize_dependency_graph(Service)
 
 if __name__ == "__main__":
     main()
