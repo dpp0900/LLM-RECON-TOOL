@@ -131,6 +131,33 @@ def extract_endpoints(root_directory, extensions, endpoint_patterns):
 
     return endpoints_by_file
     
+def concat_endpoint_results(endpoints_by_file):
+    """ALL 메소드로 반환된 엔드포인트를 GET, POST 엔드포인트와 합치는 작업을 합니다.
+    ALL 엔드포인트는 GET, POST 엔드포인트의 basepath로 사용되며, ALL 엔드포인트는 삭제됩니다.
+    Dict의 구조는 {"file_path": {"GET": ["/api/endpoint1", "/api/endpoint2"], "POST": ["/api/endpoint3"]}}"""
+
+    all_endpoints = {}
+    for file_path, endpoints in endpoints_by_file.items():
+        basepath = None  # 기본 경로 초기화
+        if "ALL" in endpoints:
+            # ALL 메소드의 첫 번째 경로를 basepath로 사용
+            basepath = endpoints["ALL"][0] if endpoints["ALL"] else None
+
+        for method, paths in endpoints.items():
+            if method == "ALL":
+                continue  # ALL 메소드는 처리 후 삭제되므로 건너뜀
+
+            if paths:  # paths가 비어있지 않은 경우만 처리
+                for path in paths:
+                    # basepath와 결합된 전체 경로 생성
+                    full_path = f"{basepath}{path}" if basepath else path
+                    if file_path not in all_endpoints:
+                        all_endpoints[file_path] = {}
+                    if method not in all_endpoints[file_path]:
+                        all_endpoints[file_path][method] = []
+                    all_endpoints[file_path][method].append(full_path)
+
+    return all_endpoints
 
 def main():
     """메인 실행 함수."""
@@ -157,8 +184,8 @@ def main():
     service_name = identify_service_name(main_folder)
     print("서비스 이름:", service_name)
     
-    Service = model.Service(name="UserService", root_directory=root_directory, main_source=main_source, framework=framework_result)
-
+    Service = model.Service(name=service_name, root_directory=root_directory, main_source=main_source, framework=framework_result)
+    
     # Step 4: get endpoint patterns
     endpoint_patterns = get_endpoint_patterns(main_source, framework_result)
     for method, pattern in endpoint_patterns.items():
@@ -166,14 +193,18 @@ def main():
 
     # Step 5: extract endpoints
     endpoints_by_file = extract_endpoints(root_directory, extensions, endpoint_patterns)
-    input()
-    print("\n추출된 엔드포인트:")
-    for file_path, endpoints in endpoints_by_file.items():
-        print(f"파일: {file_path}")
-        for method, paths in endpoints.items():
-            print(f"  {method}:")
-            for path in paths:
-                print(f"    - {path}")
+    # print("\n추출된 엔드포인트:")
+    # for file_path, endpoints in endpoints_by_file.items():
+    #     print(f"파일: {file_path}")
+    #     for method, paths in endpoints.items():
+    #         print(f"  {method}:")
+    #         for path in paths:
+    #             print(f"    - {path}")
+    # Step 6: concat endpoint results
+    all_endpoints = concat_endpoint_results(endpoints_by_file)
+    print("\n최종 엔드포인트 결과:")
+    print(all_endpoints)
+        
 
 if __name__ == "__main__":
     main()
