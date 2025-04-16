@@ -18,14 +18,15 @@ LLM_ASK_QUERY_TYPE = {
    - Path definitions (e.g., path('url/', view_function))
 5. Provide the patterns in the following JSON format:
 {
-    //if method like @RequestMapping in spring, add your self
+    "ALL": "regex_for_generic_request_mapping"
     "GET": "regex_for_get",
     "POST": "regex_for_post",
     "PUT": "regex_for_put",
     "DELETE": "regex_for_delete",
     "PATCH": "regex_for_patch"
 }
-6. Do not include any additional text or explanations outside the specified format.'''
+6. The "ALL" key should include patterns for annotations or functions that do not specify a specific HTTP method (e.g., @RequestMapping without a method).
+7. Do not include any additional text or explanations outside the specified format.'''
 ,
 }
 
