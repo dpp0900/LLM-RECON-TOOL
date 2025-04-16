@@ -171,14 +171,40 @@ def extract_endpoints(root_directory, extensions, endpoint_patterns):
             code = file.read()
             file_endpoints = {}
             
+            # 모든 엔드포인트를 ALL 카테고리에 추가하기 위한 세트
+            all_endpoints = set()
+            
+            # RequestMapping 패턴을 위한 처리
+            request_pattern = valid_patterns.get("REQUEST", None)
+            if request_pattern:
+                try:
+                    request_matches = re.finditer(request_pattern, code)
+                    
+                    for match in request_matches:
+                        if match.groups() and len(match.groups()) > 0:
+                            endpoint_path = match.group(1)
+                        else:
+                            endpoint_path = match.group(0)
+                        
+                        all_endpoints.add(endpoint_path)
+                        
+                        # ALL 카테고리에 추가
+                        if "ALL" not in file_endpoints:
+                            file_endpoints["ALL"] = []
+                        if endpoint_path not in file_endpoints["ALL"]:
+                            file_endpoints["ALL"].append(endpoint_path)
+                
+                except re.error as e:
+                    print(f"RequestMapping 패턴 '{request_pattern}' 검색 중 오류 발생: {e}")
+            
             # 각 HTTP 메소드별 엔드포인트 추출
             for method, pattern in valid_patterns.items():
+                if method == "REQUEST":  # RequestMapping은 이미 처리했으므로 스킵
+                    continue
+                
                 try:
                     # LLM에서 제공한 패턴 사용
                     matches = re.finditer(pattern, code)
-                    
-                    if method not in file_endpoints and matches:
-                        file_endpoints[method] = []
                     
                     for match in matches:
                         # 패턴에서 첫 번째 캡처 그룹을 사용 (일반적으로 경로)
@@ -188,10 +214,25 @@ def extract_endpoints(root_directory, extensions, endpoint_patterns):
                         else:
                             endpoint_path = match.group(0)
                         
-                        file_endpoints[method].append(endpoint_path)
+                        # 해당 메소드의 엔드포인트 리스트에 추가
+                        if method not in file_endpoints:
+                            file_endpoints[method] = []
+                        if endpoint_path not in file_endpoints[method]:
+                            file_endpoints[method].append(endpoint_path)
+                        
+                        # ALL 카테고리에도 추가
+                        all_endpoints.add(endpoint_path)
                 
                 except re.error as e:
                     print(f"패턴 '{pattern}' 검색 중 오류 발생: {e}")
+            
+            # ALL 카테고리에 모든 엔드포인트 추가
+            if all_endpoints:
+                if "ALL" not in file_endpoints:
+                    file_endpoints["ALL"] = []
+                for path in all_endpoints:
+                    if path not in file_endpoints["ALL"]:
+                        file_endpoints["ALL"].append(path)
             
             if file_endpoints:  # 해당 파일에서 엔드포인트가 발견된 경우만 추가
                 endpoints_by_file[file_path] = file_endpoints
@@ -217,28 +258,40 @@ def print_endpoints(endpoints_by_file, root_directory):
         
         print(f"파일: {display_path}")
         
-        # 각 HTTP 메소드별 엔드포인트 출력
-        for method in ["GET", "POST", "PUT", "DELETE", "PATCH", "REQUEST"]:
+        # ALL 카테고리가 있으면 먼저 출력
+        if "ALL" in endpoints and endpoints["ALL"]:
+            print("  ALL:")
+            for path in sorted(endpoints["ALL"]):
+                display_path = _clean_endpoint_path(path)
+                print(f"    - {display_path}")
+        
+        # GET, POST 등 HTTP 메소드별 엔드포인트 출력
+        for method in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
             if method in endpoints and endpoints[method]:
                 print(f"  {method}:")
                 for path in sorted(endpoints[method]):
-                    # 경로 정리 - 문자열 형식 정리
-                    display_path = path
-                    
-                    # 어노테이션 형식이면 경로 추출 시도
-                    if isinstance(display_path, str) and "@" in display_path:
-                        # 경로 추출 시도 (어노테이션에서 경로 부분만 추출)
-                        path_match = re.search(r'"([^"]+)"', display_path)
-                        if path_match:
-                            display_path = path_match.group(1)
-                    
-                    # 경로가 /로 시작하지 않으면 추가
-                    if isinstance(display_path, str) and not display_path.startswith('/'):
-                        display_path = '/' + display_path
-                        
+                    display_path = _clean_endpoint_path(path)
                     print(f"    - {display_path}")
                     
         print()  # 파일 간 구분을 위한 빈 줄
+
+def _clean_endpoint_path(path):
+    """엔드포인트 경로를 정리합니다."""
+    # 문자열이 아닌 경우 문자열로 변환
+    if not isinstance(path, str):
+        path = str(path)
+    
+    # 어노테이션 형식에서 경로 추출 (@RequestMapping({"/path"}) -> /path)
+    if '@' in path:
+        path_match = re.search(r'"([^"]+)"', path)
+        if path_match:
+            path = path_match.group(1)
+    
+    # 경로가 /로 시작하지 않으면 추가
+    if not path.startswith('/'):
+        path = '/' + path
+        
+    return path
 
 def main():
     """메인 실행 함수."""
