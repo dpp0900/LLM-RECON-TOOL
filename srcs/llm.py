@@ -10,22 +10,23 @@ LLM_ASK_QUERY_TYPE = {
     
     "how_to_reconginize_endpoint": '''Your task is to generate a JSON object where each key is an HTTP method (e.g., GET, POST, PUT, DELETE, etc.), and the value is a valid and precise regular expression pattern that can be used to identify endpoints for that method in the provided source code. Follow these rules:
 1. Ensure all patterns are syntactically correct and can be compiled without errors.
-2. Patterns should be general enough to work across multiple programming languages and frameworks (e.g., Java, Python, JavaScript, PHP).
-3. Avoid overly specific patterns that depend on a single framework or language. Your return will be used to identify endpoints in various web service implementations.
-4. Include patterns that match common endpoint definitions, such as:
+2. IMPORTANT: Analyze the actual source code provided and create patterns that are specific to the framework used in that code (e.g., Spring, Django, Flask, Express, Laravel, etc.) WITHOUT USING HARDCODED PATTERNS.
+3. Do not rely on predefined patterns - instead analyze the given code to determine the exact pattern format used in this specific codebase.
+4. Your patterns should match actual endpoint definitions in the provided code, focusing on:
    - Annotations (e.g., @GetMapping, @RequestMapping, @Route, @app.route)
    - Function calls (e.g., app.get(), router.post())
    - Path definitions (e.g., path('url/', view_function))
-5. Provide the patterns in the following JSON format:
+5. Include any specific variations or custom patterns you identify in the actual code.
+6. Provide the patterns in the following JSON format:
 {
-    //if method like @RequestMapping in spring, add your self
-    "GET": "regex_for_get",
-    "POST": "regex_for_post",
-    "PUT": "regex_for_put",
-    "DELETE": "regex_for_delete",
-    "PATCH": "regex_for_patch"
+    "GET": "regex_for_get_specific_to_this_code",
+    "POST": "regex_for_post_specific_to_this_code",
+    "PUT": "regex_for_put_specific_to_this_code",
+    "DELETE": "regex_for_delete_specific_to_this_code",
+    "PATCH": "regex_for_patch_specific_to_this_code",
+    "REQUEST": "regex_for_general_requests_if_applicable"
 }
-6. Do not include any additional text or explanations outside this specified format.''',
+7. Do not include any additional text or explanations outside this specified format.''',
 
     "extract_parameters": '''Your task is to analyze the provided endpoint code and extract all parameters (path parameters, query parameters, request body fields, etc.). Return the information in the following JSON format:
 {

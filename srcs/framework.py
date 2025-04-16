@@ -85,20 +85,7 @@ def get_endpoint_patterns(file_path, framework):
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
     
-    # Spring Boot 프레임워크인 경우 미리 정의된 패턴 사용
-    if isinstance(framework, str) and ("Spring" in framework or "spring" in framework):
-        print("Spring framework detected, using predefined patterns")
-        spring_patterns = {
-            "GET": "@GetMapping\\s*\\(\\s*[\\\"\\'](.*?)[\\\"\\'](\\s*\\)|\\s*,)",
-            "POST": "@PostMapping\\s*\\(\\s*[\\\"\\'](.*?)[\\\"\\'](\\s*\\)|\\s*,)",
-            "PUT": "@PutMapping\\s*\\(\\s*[\\\"\\'](.*?)[\\\"\\'](\\s*\\)|\\s*,)",
-            "DELETE": "@DeleteMapping\\s*\\(\\s*[\\\"\\'](.*?)[\\\"\\'](\\s*\\)|\\s*,)",
-            "PATCH": "@PatchMapping\\s*\\(\\s*[\\\"\\'](.*?)[\\\"\\'](\\s*\\)|\\s*,)",
-            "REQUEST": "@RequestMapping\\s*\\(\\s*(?:value\\s*=\\s*)?[\\\"\\'](.*?)[\\\"\\'](\\s*\\)|\\s*,)"
-        }
-        return spring_patterns
-    
-    # For other frameworks, ask LLM
+    # 모든 프레임워크에 대해 LLM 사용
     with open(file_path, "r") as file:
         code = file.read()
     prompt = {
@@ -130,15 +117,6 @@ def get_endpoint_patterns(file_path, framework):
                         return fixed_json["result"]
                 except Exception as e:
                     print(f"Failed to extract JSON: {e}")
-            
-            # If framework looks like Spring but was misidentified
-            if any(keyword in str(framework).lower() for keyword in ["java", "controller", "rest"]):
-                print("Framework seems Java/Spring related, using predefined patterns")
-                return {
-                    "GET": "@GetMapping\\s*\\(\\s*[\\\"\\'](.*?)[\\\"\\'](\\s*\\)|\\s*,)",
-                    "POST": "@PostMapping\\s*\\(\\s*[\\\"\\'](.*?)[\\\"\\'](\\s*\\)|\\s*,)",
-                    "REQUEST": "@RequestMapping\\s*\\(\\s*(?:value\\s*=\\s*)?[\\\"\\'](.*?)[\\\"\\'](\\s*\\)|\\s*,)"
-                }
             
             return "Failed to parse response"
     except Exception as e:
@@ -192,61 +170,28 @@ def extract_endpoints(root_directory, extensions, endpoint_patterns):
         with open(file_path, "r") as file:
             code = file.read()
             file_endpoints = {}
-            all_endpoints = set()
-            
-            # RequestMapping 패턴을 찾기 위한 정규식
-            request_mapping_pattern = r'@RequestMapping\(\s*(?:value\s*=\s*)?\{\s*"([^"]+)"\s*\}\)'
-            request_mappings = re.findall(request_mapping_pattern, code)
-            
-            # ALL 카테고리에 RequestMapping 추가
-            for mapping in request_mappings:
-                annotation = f'@RequestMapping({{"{mapping}"}})'
-                all_endpoints.add(annotation)
-                if "ALL" not in file_endpoints:
-                    file_endpoints["ALL"] = []
-                file_endpoints["ALL"].append(annotation)
             
             # 각 HTTP 메소드별 엔드포인트 추출
             for method, pattern in valid_patterns.items():
-                if method == "REQUEST":  # RequestMapping은 이미 처리했으므로 스킵
-                    continue
+                try:
+                    # LLM에서 제공한 패턴 사용
+                    matches = re.finditer(pattern, code)
                     
-                # GetMapping, PostMapping 등 패턴 찾기
-                mapping_pattern = ""
-                if method == "GET":
-                    mapping_pattern = r'@GetMapping\(\s*(?:value\s*=\s*)?\{\s*"([^"]+)"\s*\}\)'
-                elif method == "POST":
-                    mapping_pattern = r'@PostMapping\(\s*(?:value\s*=\s*)?\{\s*"([^"]+)"\s*\}\)'
-                elif method == "PUT":
-                    mapping_pattern = r'@PutMapping\(\s*(?:value\s*=\s*)?\{\s*"([^"]+)"\s*\}\)'
-                elif method == "DELETE":
-                    mapping_pattern = r'@DeleteMapping\(\s*(?:value\s*=\s*)?\{\s*"([^"]+)"\s*\}\)'
-                elif method == "PATCH":
-                    mapping_pattern = r'@PatchMapping\(\s*(?:value\s*=\s*)?\{\s*"([^"]+)"\s*\}\)'
-                else:
-                    continue  # 알 수 없는 메소드는 스킵
-                
-                if mapping_pattern:
-                    mappings = re.findall(mapping_pattern, code)
-                    if mappings:
-                        if method not in file_endpoints:
-                            file_endpoints[method] = []
+                    if method not in file_endpoints and matches:
+                        file_endpoints[method] = []
+                    
+                    for match in matches:
+                        # 패턴에서 첫 번째 캡처 그룹을 사용 (일반적으로 경로)
+                        # 캡처 그룹이 없는 경우 전체 매치 사용
+                        if match.groups() and len(match.groups()) > 0:
+                            endpoint_path = match.group(1)
+                        else:
+                            endpoint_path = match.group(0)
                         
-                        for mapping in mappings:
-                            annotation = ""
-                            if method == "GET":
-                                annotation = f'@GetMapping({{"{mapping}"}})'
-                            elif method == "POST":
-                                annotation = f'@PostMapping({{"{mapping}"}})'
-                            elif method == "PUT":
-                                annotation = f'@PutMapping({{"{mapping}"}})'
-                            elif method == "DELETE":
-                                annotation = f'@DeleteMapping({{"{mapping}"}})'
-                            elif method == "PATCH":
-                                annotation = f'@PatchMapping({{"{mapping}"}})'
-                            
-                            if annotation:
-                                file_endpoints[method].append(annotation)
+                        file_endpoints[method].append(endpoint_path)
+                
+                except re.error as e:
+                    print(f"패턴 '{pattern}' 검색 중 오류 발생: {e}")
             
             if file_endpoints:  # 해당 파일에서 엔드포인트가 발견된 경우만 추가
                 endpoints_by_file[file_path] = file_endpoints
@@ -272,41 +217,23 @@ def print_endpoints(endpoints_by_file, root_directory):
         
         print(f"파일: {display_path}")
         
-        # ALL 카테고리 먼저 출력
-        if "ALL" in endpoints:
-            print("  ALL:")
-            for path in sorted(endpoints["ALL"]):
-                # 경로 정리 - 경로가 /로 시작하지 않으면 추가
-                display_path = path
-                if display_path.startswith('@'):
-                    # 어노테이션에서 경로 추출 (@RequestMapping({"/path"}) -> /path)
-                    import re
-                    path_match = re.search(r'"([^"]+)"', display_path)
-                    if path_match:
-                        display_path = path_match.group(1)
-                        if not display_path.startswith('/'):
-                            display_path = '/' + display_path
-                elif not display_path.startswith('/'):
-                    display_path = '/' + display_path
-                    
-                print(f"    - {display_path}")
-        
-        # 나머지 HTTP 메소드 출력
-        for method in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
+        # 각 HTTP 메소드별 엔드포인트 출력
+        for method in ["GET", "POST", "PUT", "DELETE", "PATCH", "REQUEST"]:
             if method in endpoints and endpoints[method]:
                 print(f"  {method}:")
                 for path in sorted(endpoints[method]):
-                    # 경로 정리 - 경로가 /로 시작하지 않으면 추가
+                    # 경로 정리 - 문자열 형식 정리
                     display_path = path
-                    if display_path.startswith('@'):
-                        # 어노테이션에서 경로 추출 (@GetMapping({"/path"}) -> /path)
-                        import re
+                    
+                    # 어노테이션 형식이면 경로 추출 시도
+                    if isinstance(display_path, str) and "@" in display_path:
+                        # 경로 추출 시도 (어노테이션에서 경로 부분만 추출)
                         path_match = re.search(r'"([^"]+)"', display_path)
                         if path_match:
                             display_path = path_match.group(1)
-                            if not display_path.startswith('/'):
-                                display_path = '/' + display_path
-                    elif not display_path.startswith('/'):
+                    
+                    # 경로가 /로 시작하지 않으면 추가
+                    if isinstance(display_path, str) and not display_path.startswith('/'):
                         display_path = '/' + display_path
                         
                     print(f"    - {display_path}")
@@ -319,7 +246,7 @@ def main():
     import sys
     import argparse
     
-    parser = argparse.ArgumentParser(description='Spring Boot 엔드포인트 추출 도구')
+    parser = argparse.ArgumentParser(description='웹 서비스 엔드포인트 추출 도구')
     parser.add_argument('--root_dir', '-r', help='분석할 루트 디렉토리 경로', default=None)
     args = parser.parse_args()
     
