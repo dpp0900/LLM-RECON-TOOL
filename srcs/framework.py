@@ -152,6 +152,7 @@ def main():
 
     # Step 5: extract endpoints
     endpoints_by_file = extract_endpoints(root_directory, extensions, endpoint_patterns)
+    input()
     print("\n추출된 엔드포인트:")
     for file_path, endpoints in endpoints_by_file.items():
         print(f"파일: {file_path}")

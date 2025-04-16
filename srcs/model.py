@@ -1,7 +1,7 @@
 class Service:
-    def __init__(self, name: str, path: str, main_source: str, framework: str):
+    def __init__(self, name: str, path: root_directory, main_source: str, framework: str):
         self.name = name
-        self.path = path
+        self.root_directory = root_directory
         self.main_source = main_source
         self.framework = framework
         self.endpoints = []

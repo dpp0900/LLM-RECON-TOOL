@@ -26,7 +26,8 @@ LLM_ASK_QUERY_TYPE = {
     "PATCH": "regex_for_patch"
 }
 6. The "ALL" key should include patterns for annotations or functions that do not specify a specific HTTP method (e.g., @RequestMapping without a method).
-7. Do not include any additional text or explanations outside the specified format.'''
+7. Result of regex must look like "/api".
+8. Do not include any additional text or explanations outside the specified format.'''
 ,
 }
 
