@@ -1,31 +1,35 @@
 class Service:
-    def __init__(self, name: str, path: str, main_source: str, framework: str):
+    def __init__(self, name: str, root_directory: str, main_source: str, framework: str):
         self.name = name
-        self.path = path
+        self.root_directory = root_directory
         self.main_source = main_source
         self.framework = framework
         self.endpoints = []
         self.database = None
         self.dependencies = DependencyGraph()
-        
-    def add_endpoint(self, endpoint: Endpoint):
+
+    def add_endpoint(self, endpoint: 'Endpoint'):
         """엔드포인트를 추가합니다."""
         self.endpoints.append(endpoint)
         self.dependencies.add_dependency(self.name, endpoint.endpoint)
-    def remove_endpoint(self, endpoint: Endpoint):
+
+    def remove_endpoint(self, endpoint: 'Endpoint'):
         """엔드포인트를 제거합니다."""
         if endpoint in self.endpoints:
             self.endpoints.remove(endpoint)
             self.dependencies.remove_dependency(self.name, endpoint.endpoint)
-    def set_database(self, database: Database):
+
+    def set_database(self, database: 'Database'):
         """데이터베이스를 설정합니다."""
         self.database = database
         self.dependencies.add_dependency(self.name, database.purpose)
+
     def remove_database(self):
         """데이터베이스를 제거합니다."""
         if self.database:
             self.dependencies.remove_dependency(self.name, self.database.purpose)
             self.database = None
+
 
 class DependencyGraph:
     def __init__(self):
@@ -74,15 +78,6 @@ class Endpoint:
         self.path = path
         self.params = params if params else {}
         self.auth_required = False  # 인증 필요 여부
-        self.dependency_graph = DependencyGraph()  # 의존성 그래프
-
-    def add_dependency(self, to_node: str):
-        """의존성을 추가합니다."""
-        self.dependency_graph.add_dependency(self.endpoint, to_node)
-
-    def remove_dependency(self, to_node: str):
-        """의존성을 제거합니다."""
-        self.dependency_graph.remove_dependency(self.endpoint, to_node)
 
     def requires_authentication(self, required: bool):
         """인증 필요 여부를 설정합니다."""
@@ -96,14 +91,6 @@ class Endpoint:
             "path": self.path,
             "params": self.params,
             "auth_required": self.auth_required,
-            "dependencies": self.dependency_graph.get_dependencies(self.endpoint),
-        }
-
-    def to_graph_data(self):
-        """시각화를 위한 그래프 데이터를 반환합니다."""
-        return {
-            "nodes": [self.endpoint],
-            "edges": self.dependency_graph.to_edge_list(),
         }
 
 
@@ -128,14 +115,6 @@ class Database:
             self.tables.remove(table_name)
             self.dependencies.remove_dependency(self.purpose, table_name)
 
-    def add_dependency(self, from_node: str, to_node: str):
-        """의존성을 추가합니다."""
-        self.dependencies.add_dependency(from_node, to_node)
-
-    def remove_dependency(self, from_node: str, to_node: str):
-        """의존성을 제거합니다."""
-        self.dependencies.remove_dependency(from_node, to_node)
-
     def describe(self):
         """Database의 정보를 출력합니다."""
         return {
@@ -145,11 +124,4 @@ class Database:
             "connection_string": self.connection_string,
             "tables": self.tables,
             "dependencies": self.dependencies.describe(),
-        }
-
-    def to_graph_data(self):
-        """시각화를 위한 그래프 데이터를 반환합니다."""
-        return {
-            "nodes": [self.purpose] + self.tables,
-            "edges": self.dependencies.to_edge_list(),
         }

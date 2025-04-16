@@ -3,6 +3,8 @@ import json
 import re
 from llm import ask_chatgpt
 
+import model
+
 def list_all_dirs(root_dir):
     """하위 모든 디렉토리와 파일을 리스트로 반환합니다."""
     all_items = []
@@ -54,6 +56,12 @@ def identify_framework(file_path):
         code = file.read()
     res = ask_chatgpt("identify_framework", code)
     return res
+
+def identify_service_name(folder_path):
+    """서비스 이름을 식별합니다."""
+    dirs = list_all_dirs(folder_path)
+    res = ask_chatgpt("identify_service_name", str(dirs))
+    return parse_result(res)
 
 def get_endpoint_patterns(file_path, framework):
     """파일 내용을 읽고 엔드포인트 패턴을 식별합니다."""
@@ -122,7 +130,7 @@ def extract_endpoints(root_directory, extensions, endpoint_patterns):
                 endpoints_by_file[file_path] = file_endpoints
 
     return endpoints_by_file
-
+    
 
 def main():
     """메인 실행 함수."""
@@ -145,13 +153,20 @@ def main():
     # Step 3: analyze the main source file
     framework_result = identify_framework(main_source)
     print("최종 분석 결과:", framework_result)
+    
+    service_name = identify_service_name(main_folder)
+    print("서비스 이름:", service_name)
+    
+    Service = model.Service(name="UserService", root_directory=root_directory, main_source=main_source, framework=framework_result)
 
     # Step 4: get endpoint patterns
     endpoint_patterns = get_endpoint_patterns(main_source, framework_result)
-    print("엔드포인트 패턴:", endpoint_patterns)
+    for method, pattern in endpoint_patterns.items():
+        print(f"{method} 패턴: {pattern}")
 
     # Step 5: extract endpoints
     endpoints_by_file = extract_endpoints(root_directory, extensions, endpoint_patterns)
+    input()
     print("\n추출된 엔드포인트:")
     for file_path, endpoints in endpoints_by_file.items():
         print(f"파일: {file_path}")
