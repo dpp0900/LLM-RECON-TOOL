@@ -1,5 +1,9 @@
+import uuid
+
+
 class Service:
     def __init__(self, name: str, root_directory: str, main_source: str, framework: str):
+        self.id = str(uuid.uuid4())  # 고유 ID 생성
         self.name = name
         self.root_directory = root_directory
         self.main_source = main_source
@@ -11,28 +15,29 @@ class Service:
     def add_endpoint(self, endpoint: 'Endpoint'):
         """엔드포인트를 추가합니다."""
         self.endpoints.append(endpoint)
-        self.dependencies.add_dependency(self.name, endpoint.filepath)
+        self.dependencies.add_dependency(self.id, endpoint.id)  # ID 기반 의존성 추가
 
     def remove_endpoint(self, endpoint: 'Endpoint'):
         """엔드포인트를 제거합니다."""
         if endpoint in self.endpoints:
             self.endpoints.remove(endpoint)
-            self.dependencies.remove_dependency(self.name, endpoint.filepath)
+            self.dependencies.remove_dependency(self.id, endpoint.id)
 
     def set_database(self, database: 'Database'):
         """데이터베이스를 설정합니다."""
         self.database = database
-        self.dependencies.add_dependency(self.name, database.purpose)
+        self.dependencies.add_dependency(self.id, database.id)  # ID 기반 의존성 추가
 
     def remove_database(self):
         """데이터베이스를 제거합니다."""
         if self.database:
-            self.dependencies.remove_dependency(self.name, self.database.purpose)
+            self.dependencies.remove_dependency(self.id, self.database.id)
             self.database = None
-            
+
     def describe(self):
         """Service의 정보를 출력합니다."""
         return {
+            "id": self.id,
             "name": self.name,
             "root_directory": self.root_directory,
             "main_source": self.main_source,
@@ -84,10 +89,11 @@ class DependencyGraph:
 
 
 class Endpoint:
-    def __init__(self, filepath: str, method: str = "GET", path: str = "/", params: dict = None):
-        self.filepath = filepath
-        self.method = method
+    def __init__(self, path: str, method: str = "GET", file_path: str = None, params: dict = None):
+        self.id = str(uuid.uuid4())  # 고유 ID 생성
         self.path = path
+        self.method = method
+        self.file_path = file_path
         self.params = params if params else {}
         self.auth_required = False  # 인증 필요 여부
         self.code = None  # 엔드포인트의 코드
@@ -99,16 +105,19 @@ class Endpoint:
     def describe(self):
         """Endpoint의 정보를 출력합니다."""
         return {
-            "filepath": self.filepath,
-            "method": self.method,
+            "id": self.id,
             "path": self.path,
+            "method": self.method,
+            "file_path": self.file_path,
             "params": self.params,
             "auth_required": self.auth_required,
+            "code": self.code,
         }
-        
+
     def add_param(self, key: str, value: str):
         """파라미터를 추가합니다."""
         self.params[key] = value
+
     def remove_param(self, key: str):
         """파라미터를 제거합니다."""
         if key in self.params:
@@ -118,6 +127,7 @@ class Endpoint:
 class Database:
     def __init__(self, db_type: str = "RDBMS", purpose: str = "User data storage", init_sql: str = "CREATE...",
                  connection_string: str = "localhost:5432"):
+        self.id = str(uuid.uuid4())  # 고유 ID 생성
         self.db_type = db_type
         self.purpose = purpose
         self.init_sql = init_sql
@@ -128,17 +138,18 @@ class Database:
     def add_table(self, table_name: str):
         """테이블을 추가합니다."""
         self.tables.append(table_name)
-        self.dependencies.add_dependency(self.purpose, table_name)
+        self.dependencies.add_dependency(self.id, table_name)  # ID 기반 의존성 추가
 
     def remove_table(self, table_name: str):
         """테이블을 제거합니다."""
         if table_name in self.tables:
             self.tables.remove(table_name)
-            self.dependencies.remove_dependency(self.purpose, table_name)
+            self.dependencies.remove_dependency(self.id, table_name)
 
     def describe(self):
         """Database의 정보를 출력합니다."""
         return {
+            "id": self.id,
             "db_type": self.db_type,
             "purpose": self.purpose,
             "init_sql": self.init_sql,
