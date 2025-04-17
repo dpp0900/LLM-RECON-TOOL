@@ -237,15 +237,27 @@ def concat_endpoint_results(endpoints_by_file):
     return all_endpoints
     
 
-def add_endpoint_to_service(service, all_endpoints):
-    """Service 객체에 엔드포인트를 추가합니다."""
-    for file_path, endpoints in all_endpoints.items():
+def add_endpoint_to_service(service, endpoints_by_file, paths_by_file, endpoints_code_by_file):
+    """
+    Service 객체에 엔드포인트를 추가합니다.
+    paths_by_file와 endpoints_code_by_file를 활용하여 엔드포인트 정보를 명확히 추가합니다.
+    path는 paths_by_file, code는 endpoints_code_by_file에서 가져옵니다.
+    """
+    for file_path, endpoints in endpoints_by_file.items():
         for method, paths in endpoints.items():
+            if file_path not in paths_by_file or file_path not in endpoints_code_by_file:
+                continue
+
             for path in paths:
-                endpoint = model.Endpoint(filepath=file_path, method=method, path=path)
+                if method not in paths_by_file[file_path]:
+                    continue
+
+                # 엔드포인트 객체 생성
+                endpoint = model.Endpoint(path=path, method=method, file_path=file_path)
+                endpoint.code = endpoints_code_by_file[file_path][method]
+
+                # Service에 엔드포인트 추가
                 service.add_endpoint(endpoint)
-                # print(f"엔드포인트 추가: {endpoint}")
-    # print(service.describe())  # Service 객체의 정보를 출력합니다.
 
 def visualize_dependency_graph(service):
     """Service 객체의 의존성 그래프를 시각화합니다."""
@@ -291,33 +303,37 @@ def main():
     # Step 3: analyze the main source file
     framework_result = identify_framework(main_source)
     print("최종 분석 결과:", framework_result)
-    
+
     service_name = identify_service_name(main_folder)
     print("서비스 이름:", service_name)
-    
-    Service = model.Service(name=service_name, root_directory=root_directory, main_source=main_source, framework=framework_result)
-    
+
+    service = model.Service(name=service_name, root_directory=root_directory, main_source=main_source, framework=framework_result)
+
     # Step 4: get endpoint patterns
     endpoint_patterns = get_endpoint_patterns(main_source, framework_result)
     for method, pattern in endpoint_patterns.items():
         print(f"{method} 패턴: {pattern}")
 
-    # # Step 5: extract endpoints
+    # Step 5: extract endpoints
     endpoints_by_file = extract_endpoints(root_directory, extensions, endpoint_patterns)
     paths_by_file = parse_path_from_endpoint(endpoints_by_file)
     print("\n엔드포인트 결과:")
     print(json.dumps(paths_by_file, indent=2))
-    all_endpoints = concat_endpoint_results(paths_by_file)
+
+    paths_by_file = concat_endpoint_results(paths_by_file)
     print("\n최종 엔드포인트 결과:")
-    print(json.dumps(all_endpoints, indent=2))
+    print(json.dumps(paths_by_file, indent=2))
+
     endpoints_code_by_file = extract_code_from_endpoint(root_directory, endpoints_by_file)
     print("\n엔드포인트 코드 결과:")
     print(json.dumps(endpoints_code_by_file, indent=2))
-        
+
     # Step 6: add endpoints to service
-    # add_endpoint_to_service(Service, all_endpoints)
-    
-    # visualize_dependency_graph(Service)
+    add_endpoint_to_service(service, endpoints_by_file, paths_by_file, endpoints_code_by_file)
+    print("\nService 엔드포인트 추가 결과:")
+    print(json.dumps(service.describe(), indent=2))
+    # Step 7: visualize dependency graph
+    visualize_dependency_graph(service)
 
 if __name__ == "__main__":
     main()

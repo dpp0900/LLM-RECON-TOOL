@@ -89,7 +89,7 @@ class DependencyGraph:
 
 
 class Endpoint:
-    def __init__(self, path: str, method: str = "GET", file_path: str = None, params: dict = None):
+    def __init__(self, path: str, method: str = "GET", file_path: str = None, code: str = None, params: dict = None):
         self.id = str(uuid.uuid4())  # 고유 ID 생성
         self.path = path
         self.method = method
