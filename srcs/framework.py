@@ -251,11 +251,15 @@ def add_endpoint_to_service(service, endpoints_by_file, paths_by_file, endpoints
             for path in paths:
                 if method not in paths_by_file[file_path]:
                     continue
+                
+                real_path = paths_by_file[file_path][method][0]  # 첫 번째 경로 사용
 
                 # 엔드포인트 객체 생성
-                endpoint = model.Endpoint(path=path, method=method, file_path=file_path)
-                endpoint.code = endpoints_code_by_file[file_path][method]
-
+                endpoint = model.Endpoint(path=real_path, method=method, file_path=file_path)
+                for code in endpoints_code_by_file[file_path][method]:
+                    if code["endpoint"] == path:
+                        endpoint.code = code["code"]
+                        break
                 # Service에 엔드포인트 추가
                 service.add_endpoint(endpoint)
 

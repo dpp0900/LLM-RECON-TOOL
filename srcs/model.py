@@ -97,6 +97,7 @@ class Endpoint:
         self.params = params if params else {}
         self.auth_required = False  # 인증 필요 여부
         self.code = None  # 엔드포인트의 코드
+        self.description = None  # 엔드포인트의 설명
 
     def requires_authentication(self, required: bool):
         """인증 필요 여부를 설정합니다."""
