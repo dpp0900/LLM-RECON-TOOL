@@ -132,50 +132,64 @@ def extract_endpoints(root_directory, extensions, endpoint_patterns):
                 print(f"파일 {file_path}에서 엔드포인트 발견: {file_endpoints}")
 
     return endpoints_by_file
-    
-def test_extract_endpoints(root_directory, extensions, endpoint_patterns):
-    """주어진 디렉토리에서 엔드포인트와 해당 소스코드를 추출합니다.
-    소스코드는 현재의 엔드포인트와 다음 엔드포인트 사이의 모든 코드를 의미합니다."""
-    valid_patterns = {}
-    for method, pattern in endpoint_patterns.items():
-        try:
-            re.compile(pattern)  # 패턴 컴파일 시도
-            valid_patterns[method] = pattern
-        except re.error as e:
-            print(f"유효하지 않은 패턴 ({method}): {pattern} - 오류: {e}")
 
-    if not valid_patterns:
-        print("유효한 정규 표현식 패턴이 없습니다.")
-        return {}
+def extract_code_from_endpoint(root_directory, endpoints_by_file):
+    """
+    주어진 엔드포인트 정보에 기반해 코드를 추출합니다.
+    추출할 코드의 범위는 현 엔드포인트 선언부부터 다음 엔드포인트 선언부까지입니다.
+    또한 ALL 메소드는 무시합니다.
+    """
+    extracted_code_by_file = {}
 
-    all_files = get_all_extension_files(root_directory, extensions)
-    endpoints_with_code = {}
+    for file_path, endpoints in endpoints_by_file.items():
+        if not os.path.exists(file_path):
+            print(f"파일을 찾을 수 없습니다: {file_path}")
+            continue
 
-    for file_path in all_files:
         with open(file_path, "r") as file:
-            code = file.read()
-            file_endpoints = {}
+            code_lines = file.readlines()
 
-            # 각 정규식 패턴에 대해 매칭된 위치를 찾음
-            for method, pattern in valid_patterns.items():
-                matches = list(re.finditer(pattern, code))
-                if matches:
-                    file_endpoints[method] = []
-                    for i, match in enumerate(matches):
-                        start = match.start()
-                        end = matches[i + 1].start() if i + 1 < len(matches) else len(code)
-                        endpoint_code = code[start:end].strip()
-                        file_endpoints[method].append({
-                            "endpoint": match.group(),
-                            "code": endpoint_code
-                        })
-                        print(f"엔드포인트 발견: {match.group()} - 코드: {endpoint_code}")
-                        input()
+        extracted_code_by_file[file_path] = {}
 
-            if file_endpoints:  # 해당 파일에서 엔드포인트가 발견된 경우만 추가
-                endpoints_with_code[file_path] = file_endpoints
+        for method, endpoint_list in endpoints.items():
+            if method == "ALL":  # ALL 메소드는 무시
+                continue
 
-    return endpoints_with_code
+            extracted_code_by_file[file_path][method] = []
+
+            # 각 엔드포인트의 선언부와 다음 선언부 사이의 코드 추출
+            for i, endpoint in enumerate(endpoint_list):
+                # 현재 엔드포인트의 시작 위치
+                start_index = None
+                for line_num, line in enumerate(code_lines):
+                    if endpoint in line:
+                        start_index = line_num
+                        break
+
+                if start_index is None:
+                    print(f"엔드포인트를 찾을 수 없습니다: {endpoint}")
+                    continue
+
+                # 다음 엔드포인트의 시작 위치
+                if i + 1 < len(endpoint_list):
+                    next_endpoint = endpoint_list[i + 1]
+                    end_index = None
+                    for line_num, line in enumerate(code_lines[start_index + 1:], start=start_index + 1):
+                        if next_endpoint in line:
+                            end_index = line_num
+                            break
+                    end_index = end_index if end_index is not None else len(code_lines)
+                else:
+                    end_index = len(code_lines)  # 마지막 엔드포인트는 파일 끝까지
+
+                # 코드 추출
+                extracted_code = "".join(code_lines[start_index:end_index]).strip()
+                extracted_code_by_file[file_path][method].append({
+                    "endpoint": endpoint,
+                    "code": extracted_code
+                })
+
+    return extracted_code_by_file
 
 def parse_path_from_endpoint(endpoints_by_file):
     """엔드포인트 선언 코드에서 경로를 추출합니다."""
@@ -296,6 +310,9 @@ def main():
     all_endpoints = concat_endpoint_results(paths_by_file)
     print("\n최종 엔드포인트 결과:")
     print(json.dumps(all_endpoints, indent=2))
+    endpoints_code_by_file = extract_code_from_endpoint(root_directory, endpoints_by_file)
+    print("\n엔드포인트 코드 결과:")
+    print(json.dumps(endpoints_code_by_file, indent=2))
         
     # Step 6: add endpoints to service
     # add_endpoint_to_service(Service, all_endpoints)
