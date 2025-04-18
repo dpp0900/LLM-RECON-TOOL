@@ -22,11 +22,34 @@ def list_all_files(root_dir):
     return all_items
 
 def parse_result(res):
-    """ChatGPT의 응답을 파싱합니다."""
+    """ChatGPT의 응답을 파싱하고 JSON 형식 오류를 복구합니다."""
     try:
+        # JSON 파싱 시도
         parsed = json.loads(res)
+        if "result" not in parsed:
+            raise ValueError("Invalid JSON format: 'result' key is missing.")
         return parsed.get("result", "No result found")
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        print(f"JSON 파싱 오류: {e}")
+        print(f"원본 응답: {res}")
+        # JSON 복구 시도
+        try:
+            # 잘못된 따옴표, 공백 등을 수정
+            fixed_res = res.replace("\n", "").replace("'", "\"").strip()
+            if not fixed_res.startswith("{"):
+                fixed_res = "{" + fixed_res
+            if not fixed_res.endswith("}"):
+                fixed_res = fixed_res + "}"
+            parsed = json.loads(fixed_res)
+            if "result" not in parsed:
+                raise ValueError("Invalid JSON format after fixing: 'result' key is missing.")
+            print("JSON 복구 성공")
+            return parsed.get("result", "No result found")
+        except Exception as fix_error:
+            print(f"JSON 복구 실패: {fix_error}")
+            return "Failed to parse response"
+    except ValueError as ve:
+        print(f"JSON 값 오류: {ve}")
         return "Failed to parse response"
 
 def check_path_exists(path):
@@ -136,7 +159,7 @@ def extract_endpoints(root_directory, extensions, endpoint_patterns):
 def extract_code_from_endpoint(root_directory, endpoints_by_file):
     """
     주어진 엔드포인트 정보에 기반해 코드를 추출합니다.
-    추출할 코드의 범위는 현 엔드포인트 선언부부터 다음 엔드포인트 선언부까지입니다.
+    추출할 코드의 범위는 현 엔드포인트 선언부부터 다음 선언부 또는 겹치는 선언부까지입니다.
     또한 ALL 메소드는 무시합니다.
     """
     extracted_code_by_file = {}
@@ -170,17 +193,26 @@ def extract_code_from_endpoint(root_directory, endpoints_by_file):
                     print(f"엔드포인트를 찾을 수 없습니다: {endpoint}")
                     continue
 
-                # 다음 엔드포인트의 시작 위치
-                if i + 1 < len(endpoint_list):
-                    next_endpoint = endpoint_list[i + 1]
-                    end_index = None
-                    for line_num, line in enumerate(code_lines[start_index + 1:], start=start_index + 1):
-                        if next_endpoint in line:
-                            end_index = line_num
-                            break
-                    end_index = end_index if end_index is not None else len(code_lines)
-                else:
-                    end_index = len(code_lines)  # 마지막 엔드포인트는 파일 끝까지
+                # 다음 엔드포인트의 시작 위치를 전체 엔드포인트에서 탐색
+                end_index = len(code_lines)  # 기본적으로 파일 끝까지
+                for other_method, other_endpoint_list in endpoints.items():
+                    if other_method == "ALL":  # ALL 메소드는 무시
+                        continue
+
+                    for other_endpoint in other_endpoint_list:
+                        if other_endpoint == endpoint:
+                            continue  # 현재 엔드포인트는 건너뜀
+
+                        # 다른 엔드포인트의 시작 위치를 찾음
+                        other_start_index = None
+                        for line_num, line in enumerate(code_lines):
+                            if other_endpoint in line:
+                                other_start_index = line_num
+                                break
+
+                        # 현재 엔드포인트의 끝 범위를 결정
+                        if other_start_index is not None and other_start_index > start_index:
+                            end_index = min(end_index, other_start_index)
 
                 # 코드 추출
                 extracted_code = "".join(code_lines[start_index:end_index]).strip()
@@ -263,6 +295,19 @@ def add_endpoint_to_service(service, endpoints_by_file, paths_by_file, endpoints
                 # Service에 엔드포인트 추가
                 service.add_endpoint(endpoint)
 
+def explain_endpoint(endpoint):
+    """엔드포인트에 대한 설명을 생성합니다."""
+    prompt = {
+        "path": endpoint.path,
+        "method": endpoint.method,
+        "file_path": endpoint.file_path,
+        "code": endpoint.code
+    }
+    print("prompt:", prompt)
+    res = ask_chatgpt("describe_endpoint", str(prompt))
+    print("ChatGPT 응답:", res)
+    return parse_result(res)
+
 def visualize_dependency_graph(service):
     """Service 객체의 의존성 그래프를 시각화합니다."""
     import networkx as nx
@@ -336,8 +381,16 @@ def main():
     add_endpoint_to_service(service, endpoints_by_file, paths_by_file, endpoints_code_by_file)
     print("\nService 엔드포인트 추가 결과:")
     print(json.dumps(service.describe(), indent=2))
-    # Step 7: visualize dependency graph
-    visualize_dependency_graph(service)
+    
+    # Step 7: describe each endpoint
+    temp_endpoint = []
+    for endpoint in service.endpoints:
+        description = explain_endpoint(endpoint)
+        temp_endpoint.append(description)
+        # print(f"엔드포인트 설명 결과: {endpoint.path} - {description}")
+    print("\n엔드포인트 설명 결과:")
+    for desc in temp_endpoint:
+        print(json.dumps(desc, indent=2))
 
 if __name__ == "__main__":
     main()

@@ -95,6 +95,9 @@ class Endpoint:
         self.method = method
         self.file_path = file_path
         self.params = params if params else {}
+        self.cookies = {}  # 쿠키 정보
+        self.headers = {}
+        self.response_type = None  # 응답 타입
         self.auth_required = False  # 인증 필요 여부
         self.code = None  # 엔드포인트의 코드
         self.description = None  # 엔드포인트의 설명

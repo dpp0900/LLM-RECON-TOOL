@@ -27,6 +27,47 @@ LLM_ASK_QUERY_TYPE = {
 8. **The regex should be most simple and easy to make it work.**
 9. Do not include any additional text or explanations outside the specified format.'''
 ,
+    "describe_endpoint": '''Your task is to analyze the provided source code and extract detailed information about a SINGLE endpoint defined in it. Extract the following information for the most relevant endpoint:
+
+1. **Path**: The URL path of the endpoint (e.g., `/api/users`).
+2. **Method**: The HTTP method used (e.g., GET, POST, PUT, DELETE).
+3. **Cookies**: Any cookies used in the endpoint (e.g., `session_id`).
+4. **Parameters**: A list of parameters used in the endpoint (e.g., `user_id`, `page`).
+5. **HTTP Headers**: Any HTTP headers used in the endpoint (e.g., `Authorization`, `Content-Type`).
+6. **Dependencies**: Any endpoint dependencies (e.g., `/api/users/{id}`).
+7. **Response Type**: The type of response returned by the endpoint (e.g., JSON, XML, HTML).
+8. **Description**: A human-readable description of the endpoint's purpose (e.g., "Get user information").
+
+**Rules**:
+- Extract information for ONLY ONE endpoint, even if multiple endpoints are present in the source code.
+- Select the most relevant endpoint based on its complexity, importance, or centrality in the source code.
+- If any field is not applicable or cannot be determined, use an empty array (`[]`) or `null` as the value.
+- The response must strictly follow the JSON format below.
+- Do not include any additional text, explanations, or comments outside the JSON structure.
+- Ensure the JSON is syntactically correct and can be parsed without errors.
+
+**Response Format**:
+{
+    "result": {
+        "endpoint": {
+            "path": "/api/users",
+            "method": "GET",
+            "cookies": ["session_id"],
+            "params": ["user_id", "page"],
+            "headers": ["Authorization", "Content-Type"],
+            "dependencies": ["/api/users/{id}"],
+            "response_type": "JSON",
+            "description": "Get user information"
+        }
+    }
+}
+
+**IMPORTANT**:
+- The top-level key must always be `"result"`.
+- The `"result"` key must contain a single `"endpoint"` object as shown in the format above.
+- Do not include any additional text, explanations, or comments outside the JSON structure.
+- If no endpoints are found, return: `{"result": {"endpoint": null}}`.
+'''
 }
 
 SYSTEM_PROMPT_HEADER = '''You are a highly capable AI assistant specializing in information security and software analysis. Your primary task is to assist in the reconnaissance and analysis of authorized web services. You will follow the user's instructions step by step and provide precise, actionable, and concise responses.'''
