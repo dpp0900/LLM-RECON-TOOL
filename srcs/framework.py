@@ -303,9 +303,9 @@ def explain_endpoint(endpoint):
         "file_path": endpoint.file_path,
         "code": endpoint.code
     }
-    print("prompt:", prompt)
+    # print("prompt:", prompt)
     res = ask_chatgpt("describe_endpoint", str(prompt))
-    print("ChatGPT 응답:", res)
+    # print("ChatGPT 응답:", res)
     return parse_result(res)
 
 def visualize_dependency_graph(service):
@@ -330,6 +330,18 @@ def visualize_dependency_graph(service):
     nx.draw(G, pos, with_labels=True, node_color="lightblue", font_weight="bold", node_size=2000, arrowsize=20)
     plt.title("Dependency Graph")
     plt.show()
+    
+def update_endpoint(endpoint, description):
+    endpoint.path = description.get("path", endpoint.path)
+    endpoint.method = description.get("method", endpoint.method)
+    endpoint.cookies = description.get("cookies", endpoint.cookies)
+    endpoint.params = description.get("params", endpoint.params)
+    endpoint.headers = description.get("headers", endpoint.headers)
+    # endpoint.dependencies = description.get("dependencies", endpoint.dependencies)
+    endpoint.response_type = description.get("response_type", endpoint.response_type)
+    endpoint.description = description.get("description", endpoint.description)
+    
+    
 
 def main():
     """메인 실행 함수."""
@@ -383,14 +395,16 @@ def main():
     print(json.dumps(service.describe(), indent=2))
     
     # Step 7: describe each endpoint
-    temp_endpoint = []
     for endpoint in service.endpoints:
         description = explain_endpoint(endpoint)
-        temp_endpoint.append(description)
-        # print(f"엔드포인트 설명 결과: {endpoint.path} - {description}")
-    print("\n엔드포인트 설명 결과:")
-    for desc in temp_endpoint:
-        print(json.dumps(desc, indent=2))
+        update_endpoint(endpoint, description)
+        print(f"\n엔드포인트 설명 결과 ({endpoint.path}):")
+        print(json.dumps(description, indent=2))
+        
+        # print(f"dependency: {description.get('dependencies', [])}")
+        # print(f"\n엔드포인트 설명 결과 ({endpoint.path}):")
+        # print(json.dumps(description, indent=2))
+
 
 if __name__ == "__main__":
     main()

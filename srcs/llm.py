@@ -34,9 +34,9 @@ LLM_ASK_QUERY_TYPE = {
 3. **Cookies**: Any cookies used in the endpoint (e.g., `session_id`).
 4. **Parameters**: A list of parameters used in the endpoint (e.g., `user_id`, `page`).
 5. **HTTP Headers**: Any HTTP headers used in the endpoint (e.g., `Authorization`, `Content-Type`).
-6. **Dependencies**: Any endpoint dependencies (e.g., `/api/users/{id}`).
+6. **Dependencies**: Any endpoint refer, href, dependency, or related endpoints (e.g., `/api/users/{id}`).
 7. **Response Type**: The type of response returned by the endpoint (e.g., JSON, XML, HTML).
-8. **Description**: A human-readable description of the endpoint's purpose (e.g., "Get user information").
+8. **Description**: A human-readable description of the endpoint's purpose. Longer descriptions are preferred.
 
 **Rules**:
 - Extract information for ONLY ONE endpoint, even if multiple endpoints are present in the source code.
@@ -70,7 +70,9 @@ LLM_ASK_QUERY_TYPE = {
 '''
 }
 
-SYSTEM_PROMPT_HEADER = '''You are a highly capable AI assistant specializing in information security and software analysis. Your primary task is to assist in the reconnaissance and analysis of authorized web services. You will follow the user's instructions step by step and provide precise, actionable, and concise responses.'''
+SYSTEM_PROMPT_HEADER = '''You are a highly capable AI assistant specializing in information security and software analysis. Your primary task is to assist in the reconnaissance and analysis of authorized web services. You will follow the user's instructions step by step and provide precise, actionable, and concise responses.
+You must respond deterministically. For the same input, your response must always be exactly the same. Do not change the format, structure, or wording of your response across different runs. Consistency is required. Assume that this task may be executed repeatedly with the same input. Avoid introducing any randomness, variation, or rephrasing in your response. Return the same result if the input is the same.
+'''
 SYSTEM_PROMPT_FOOTER = '''Your response must strictly follow this format: {"result":"your_answer"}. Do not include any additional text or explanations outside this format.'''
 
 def get_openai_api_key():
@@ -87,7 +89,7 @@ def create_openai_client():
         raise ValueError("OpenAI API key not found. Ensure 'openai_key' file or environment variable is set.")
     return OpenAI(api_key=api_key)
 
-def ask_chatgpt(ask_type: str, prompt: str, model: str="gpt-4o-mini", temp: float=0.05, max_tokens: int=2000):
+def ask_chatgpt(ask_type: str, prompt: str, model: str="gpt-4o-mini-2024-07-18", max_tokens: int=2000):
     system_prompt_body = LLM_ASK_QUERY_TYPE.get(ask_type, "send me 'Unknown'")
     openai_client = create_openai_client()
     response = openai_client.chat.completions.create(
@@ -96,7 +98,11 @@ def ask_chatgpt(ask_type: str, prompt: str, model: str="gpt-4o-mini", temp: floa
             {"role": "system", "content": SYSTEM_PROMPT_HEADER + system_prompt_body + SYSTEM_PROMPT_FOOTER},
             {"role": "user", "content": prompt}
         ],
-        temperature=temp,
+        temperature=0,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0,
+
         # max_tokens=max_tokens
     )
     return response.choices[0].message.content.strip()
