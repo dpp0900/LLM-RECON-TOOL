@@ -7,7 +7,7 @@ from llm import ask_chatgpt
 import model
 
 def list_all_dirs(root_dir):
-    """하위 모든 디렉토리와 파일을 리스트로 반환합니다."""
+    """Returns a list of all subdirectories and files."""
     all_items = []
     for dirpath, dirnames, filenames in os.walk(root_dir):
         for dirname in dirnames:
@@ -15,7 +15,7 @@ def list_all_dirs(root_dir):
     return all_items
 
 def list_all_files(root_dir):
-    """하위 모든 파일을 리스트로 반환합니다."""
+    """Returns a list of all files in all subdirectories."""
     all_items = []
     for dirpath, dirnames, filenames in os.walk(root_dir):
         for filename in filenames:
@@ -23,38 +23,51 @@ def list_all_files(root_dir):
     return all_items
 
 def parse_result(res):
-    """ChatGPT의 응답을 파싱하고 JSON 형식 오류를 복구합니다."""
+    """ChatGPT의 응답을 파싱하고 JSON 혹은 마크다운 코드 블록을 처리하고, 필요 시 복구합니다."""
+    # 1차: 최상위 JSON 파싱 시도
     try:
-        # JSON 파싱 시도
-        parsed = json.loads(res)
-        if "result" not in parsed:
-            raise ValueError("Invalid JSON format: 'result' key is missing.")
-        return parsed.get("result", "No result found")
-    except json.JSONDecodeError as e:
-        print(f"JSON parsing error: {e}")
-        print(f"Original response: {res}")
-        # JSON 복구 시도
-        try:
-            # 잘못된 따옴표, 공백 등을 수정
-            fixed_res = res.replace("\n", "").replace("'", "\"").strip()
-            if not fixed_res.startswith("{"):
-                fixed_res = "{" + fixed_res
-            if not fixed_res.endswith("}"):
-                fixed_res = fixed_res + "}"
-            parsed = json.loads(fixed_res)
-            if "result" not in parsed:
-                raise ValueError("Invalid JSON format after fixing: 'result' key is missing.")
-            print("JSON recovery succeeded")
-            return parsed.get("result", "No result found")
-        except Exception as fix_error:
-            print(f"JSON recovery failed: {fix_error}")
-            return "Failed to parse response"
-    except ValueError as ve:
-        print(f"JSON value error: {ve}")
-        return "Failed to parse response"
+        parsed0 = json.loads(res)
+    except json.JSONDecodeError:
+        # JSON이 아니면 마크다운 코드 블록 내부 JSON 추출 시도
+        m0 = re.search(r'```json\s*([\s\S]*?)\s*```', res)
+        if m0:
+            inner0 = m0.group(1).strip()
+            try:
+                return json.loads(inner0)
+            except json.JSONDecodeError:
+                return inner0
+        # 그 외 원본 문자열 반환
+        return res.strip()
+
+    # 최상위 JSON 파싱 성공
+    # 'result' 키가 있으면 그 값을 content로 사용
+    if isinstance(parsed0, dict) and "result" in parsed0:
+        result0 = parsed0["result"]
+        # result0이 문자열인 경우 추가 처리
+        if isinstance(result0, str):
+            # 마크다운 코드 블록 처리
+            m1 = re.search(r'```json\s*([\s\S]*?)\s*```', result0)
+            if m1:
+                content = m1.group(1).strip()
+            else:
+                content = result0.strip()
+            # 내부 JSON 파싱 시도
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError:
+                # 복구 로직: 따옴표/공백 정리
+                fixed = content.replace("'", '"').replace("\n", " ").replace("\r", " ").strip()
+                try:
+                    return json.loads(fixed)
+                except Exception:
+                    return content
+        # result0이 dict/list 등 JSON 타입이면 그대로 반환
+        return result0
+    # result 키 없으면 parsed0 반환
+    return parsed0
 
 def check_path_exists(path):
-    """파일 또는 폴더가 존재하는지 확인합니다."""
+    """Checks whether a file or directory exists."""
     if os.path.exists(path):
         return True
     else:
@@ -101,7 +114,17 @@ def get_endpoint_patterns(file_path, framework, temperature=0, use_local=False):
     
     res = ask_chatgpt("how_to_reconginize_endpoint", str(prompt), temperature=temperature, use_local=use_local)
     print("ChatGPT response:", res)
-    return parse_result(res)
+    # 파싱 시도
+    patterns = parse_result(res)
+    # 결과가 dict이 아니거나 빈 dict인 경우, Spring 기본 패턴 폴백
+    if not isinstance(patterns, dict) or not patterns:
+        print(f"[Fallback] Applying built-in endpoint patterns for framework '{framework}'")
+        patterns = {
+            "ALL": ".*@RequestMapping\\s*({.*?})",
+            "GET": ".*@GetMapping\\s*({.*?})",
+            "POST": ".*@PostMapping\\s*({.*?})"
+        }
+    return patterns
 
 def get_all_extension_files(root_directory, extensions):
     """특정 확장자를 가진 모든 파일을 찾습니다."""
@@ -304,10 +327,20 @@ def explain_endpoint(endpoint, use_local=False):
         "file_path": endpoint.file_path,
         "code": endpoint.code
     }
-    # print("prompt:", prompt)
     res = ask_chatgpt("describe_endpoint", str(prompt), use_local=use_local)
-    # print("ChatGPT 응답:", res)
-    return parse_result(res)
+    # 파싱 결과 가져오기
+    result = parse_result(res)
+    # 'endpoint' 키가 있는 경우 내부 객체 반환
+    if isinstance(result, dict) and "endpoint" in result:
+        desc = result["endpoint"]
+    elif isinstance(result, dict):
+        # 이미 사전 형식일 경우 그대로 사용
+        desc = result
+    else:
+        # 문자열 등 다른 형식인 경우 description 필드로 래핑
+        print(f"[Warning] explain_endpoint returned non-dict result, wrapping into description: {result}")
+        desc = {"description": result}
+    return desc
 
 def visualize_dependency_graph(service):
     """Service 객체의 의존성 그래프를 시각화합니다."""
@@ -393,7 +426,7 @@ def main():
     use_local = False
     if len(sys.argv) > 1 and sys.argv[1].upper() == "LOCAL":
         use_local = True
-        print("[Config] Using LOCAL mode with LMStudio gemma-3-4b-it-qat model")
+        print("[Config] LMStudio LOCAL mode enabled: using qwen3-8b-mlx model")
     
     root_directory = "../target/Piggy-bank/sources/com/teamsa/"
 
@@ -402,7 +435,7 @@ def main():
         return
     print(f"[Step1] Main folder: {main_folder}")
 
-    main_source = identify_main_source(main_folder)
+    main_source = identify_main_source(main_folder, use_local=use_local)
     if not check_path_exists(main_source):
         return
     extension = main_source.rsplit('.', 1)[-1]

@@ -78,8 +78,9 @@ You must respond deterministically. For the same input, your response must alway
 SYSTEM_PROMPT_FOOTER = '''Your response must strictly follow this format: {"result":"your_answer"}. Do not include any additional text or explanations outside this format.'''
 
 # LMStudio API settings
-LMSTUDIO_API_URL = "http://localhost:1234/v1/chat/completions"
-LMSTUDIO_MODEL = "gemma-3-4b-it-qat"  # Default model name
+#LMSTUDIO_API_URL = "http://localhost:1234/v1/chat/completions"
+LMSTUDIO_API_URL = "http://100.85.137.105:1234/v1/chat/completions"
+LMSTUDIO_MODEL = "qwen3-8b"  # Default model name (changed to qwen3-8b-mlx for LOCAL)
 
 def get_openai_api_key():
     """Reads the OpenAI API key from a file or environment variable."""
