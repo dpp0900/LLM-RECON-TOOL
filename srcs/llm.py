@@ -79,7 +79,7 @@ SYSTEM_PROMPT_FOOTER = '''Your response must strictly follow this format: {"resu
 
 # LMStudio API settings
 #LMSTUDIO_API_URL = "http://localhost:1234/v1/chat/completions"
-LMSTUDIO_API_URL = "http://100.85.137.105:1234/v1/chat/completions"
+LMSTUDIO_API_URL = "http://localhost:1234/v1/chat/completions"
 LMSTUDIO_MODEL = "qwen3-8b"  # Default model name (changed to qwen3-8b-mlx for LOCAL)
 
 def get_openai_api_key():
