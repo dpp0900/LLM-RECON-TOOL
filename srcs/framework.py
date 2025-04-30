@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import sys
 from llm import ask_chatgpt
 
 import model
@@ -59,34 +60,34 @@ def check_path_exists(path):
     else:
         return False
 
-def identify_main_folder(root_directory):
+def identify_main_folder(root_directory, use_local=False):
     """identify_main_folder 작업을 수행합니다."""
     dirs = list_all_dirs(root_directory)
-    res = ask_chatgpt("identify_main_folder", str(dirs))
+    res = ask_chatgpt("identify_main_folder", str(dirs), use_local=use_local)
     return parse_result(res)
 
-def identify_main_source(folder_path, temperature=0):
+def identify_main_source(folder_path, temperature=0, use_local=False):
     """identify_main_source 작업을 수행합니다."""
     files = list_all_files(folder_path)
-    res = ask_chatgpt("identify_main_source", str(files), temperature=temperature)
+    res = ask_chatgpt("identify_main_source", str(files), temperature=temperature, use_local=use_local)
     return parse_result(res)
 
-def identify_framework(file_path):
+def identify_framework(file_path, use_local=False):
     """파일 내용을 읽고 identify_framework 작업을 수행합니다."""
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
     with open(file_path, "r") as file:
         code = file.read()
-    res = ask_chatgpt("identify_framework", code)
+    res = ask_chatgpt("identify_framework", code, use_local=use_local)
     return res
 
-def identify_service_name(folder_path):
+def identify_service_name(folder_path, use_local=False):
     """서비스 이름을 식별합니다."""
     dirs = list_all_dirs(folder_path)
-    res = ask_chatgpt("identify_service_name", str(dirs))
+    res = ask_chatgpt("identify_service_name", str(dirs), use_local=use_local)
     return parse_result(res)
 
-def get_endpoint_patterns(file_path, framework, temperature=0):
+def get_endpoint_patterns(file_path, framework, temperature=0, use_local=False):
     """파일 내용을 읽고 엔드포인트 패턴을 식별합니다."""
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
@@ -98,7 +99,7 @@ def get_endpoint_patterns(file_path, framework, temperature=0):
         "framework": framework
     }
     
-    res = ask_chatgpt("how_to_reconginize_endpoint", str(prompt), temperature=temperature)
+    res = ask_chatgpt("how_to_reconginize_endpoint", str(prompt), temperature=temperature, use_local=use_local)
     print("ChatGPT response:", res)
     return parse_result(res)
 
@@ -295,7 +296,7 @@ def add_endpoint_to_service(service, endpoints_by_file, paths_by_file, endpoints
                 # Service에 엔드포인트 추가
                 service.add_endpoint(endpoint)
 
-def explain_endpoint(endpoint):
+def explain_endpoint(endpoint, use_local=False):
     """엔드포인트에 대한 설명을 생성합니다."""
     prompt = {
         "path": endpoint.path,
@@ -304,7 +305,7 @@ def explain_endpoint(endpoint):
         "code": endpoint.code
     }
     # print("prompt:", prompt)
-    res = ask_chatgpt("describe_endpoint", str(prompt))
+    res = ask_chatgpt("describe_endpoint", str(prompt), use_local=use_local)
     # print("ChatGPT 응답:", res)
     return parse_result(res)
 
@@ -341,7 +342,7 @@ def update_endpoint(endpoint, description):
     endpoint.response_type = description.get("response_type", endpoint.response_type)
     endpoint.description = description.get("description", endpoint.description)
 
-def endpoint_patterns_and_extract_endpoints(main_folder, root_directory, main_source, framework_result, extensions):
+def endpoint_patterns_and_extract_endpoints(main_folder, root_directory, main_source, framework_result, extensions, use_local=False):
     """
     엔드포인트 패턴을 인식하고 엔드포인트 및 경로 정보를 추출합니다.
 
@@ -351,11 +352,12 @@ def endpoint_patterns_and_extract_endpoints(main_folder, root_directory, main_so
       main_source (str): 주요 소스 파일 경로
       framework_result (str): 식별된 프레임워크 정보
       extensions (list): 처리할 파일 확장자 리스트
+      use_local (bool): LMStudio 사용 여부
 
     Returns:
       tuple: (endpoints_by_file, paths_by_file)
     """
-    patterns = get_endpoint_patterns(main_source, framework_result)
+    patterns = get_endpoint_patterns(main_source, framework_result, use_local=use_local)
     for method, pattern in patterns.items():
         print(f"[Pattern] {method}: {pattern}")
 
@@ -367,9 +369,9 @@ def endpoint_patterns_and_extract_endpoints(main_folder, root_directory, main_so
     serialized = json.dumps(paths_by_file)
     if not ('GET' in serialized or 'POST' in serialized):
         print("[Retry] No GET/POST endpoints found, retrying with temperature=1")
-        main_source = identify_main_source(main_folder, temperature=1)
-        framework_result = identify_framework(main_source)
-        patterns = get_endpoint_patterns(main_source, framework_result, temperature=1)
+        main_source = identify_main_source(main_folder, temperature=1, use_local=use_local)
+        framework_result = identify_framework(main_source, use_local=use_local)
+        patterns = get_endpoint_patterns(main_source, framework_result, temperature=1, use_local=use_local)
         endpoints_by_file = extract_endpoints(root_directory, extensions, patterns)
         paths_by_file = parse_path_from_endpoint(endpoints_by_file)
         print("\n[Endpoints] result after retry:")
@@ -387,9 +389,15 @@ def main():
       3. 엔드포인트 패턴 추출 및 처리
       4. 각 엔드포인트 설명 생성
     """
+    # Check for LOCAL argument to use LMStudio
+    use_local = False
+    if len(sys.argv) > 1 and sys.argv[1].upper() == "LOCAL":
+        use_local = True
+        print("[Config] Using LOCAL mode with LMStudio gemma-3-4b-it-qat model")
+    
     root_directory = "../target/Piggy-bank/sources/com/teamsa/"
 
-    main_folder = identify_main_folder(root_directory)
+    main_folder = identify_main_folder(root_directory, use_local)
     if not check_path_exists(main_folder):
         return
     print(f"[Step1] Main folder: {main_folder}")
@@ -401,9 +409,9 @@ def main():
     extensions = [f".{extension}"]
     print(f"[Step2] Main source file: {main_source}")
 
-    framework_result = identify_framework(main_source)
+    framework_result = identify_framework(main_source, use_local)
     print(f"[Step3] Framework: {framework_result}")
-    service_name = identify_service_name(main_folder)
+    service_name = identify_service_name(main_folder, use_local)
     print(f"[Service] Name: {service_name}")
     service = model.Service(
         name=service_name,
@@ -417,7 +425,7 @@ def main():
     attempts = 0
     while True:
         endpoints_by_file, paths_by_file = endpoint_patterns_and_extract_endpoints(
-            main_folder, root_directory, main_source, framework_result, extensions
+            main_folder, root_directory, main_source, framework_result, extensions, use_local
         )
         serialized = json.dumps(paths_by_file)
         # Break if GET or POST endpoints found
@@ -443,7 +451,7 @@ def main():
     print(json.dumps(service.describe(), indent=2))
 
     for endpoint in service.endpoints:
-        desc = explain_endpoint(endpoint)
+        desc = explain_endpoint(endpoint, use_local)
         update_endpoint(endpoint, desc)
         print(f"\n[Description] {endpoint.path}")
         print(json.dumps(desc, indent=2))

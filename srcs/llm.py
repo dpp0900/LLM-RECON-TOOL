@@ -1,4 +1,6 @@
 import os
+import requests
+import json
 from openai import OpenAI
 
 LLM_ASK_QUERY_TYPE = {
@@ -75,6 +77,10 @@ You must respond deterministically. For the same input, your response must alway
 '''
 SYSTEM_PROMPT_FOOTER = '''Your response must strictly follow this format: {"result":"your_answer"}. Do not include any additional text or explanations outside this format.'''
 
+# LMStudio API settings
+LMSTUDIO_API_URL = "http://localhost:1234/v1/chat/completions"
+LMSTUDIO_MODEL = "gemma-3-4b-it-qat"  # Default model name
+
 def get_openai_api_key():
     """Reads the OpenAI API key from a file or environment variable."""
     if os.path.exists("openai_key"):
@@ -89,7 +95,64 @@ def create_openai_client():
         raise ValueError("OpenAI API key not found. Ensure 'openai_key' file or environment variable is set.")
     return OpenAI(api_key=api_key)
 
-def ask_chatgpt(ask_type: str, prompt: str, model: str="gpt-4o-mini-2024-07-18", max_tokens: int=2000, temperature: float=0):
+def ask_lmstudio(ask_type: str, prompt: str, temperature: float=0):
+    """Send a request to LMStudio local API and get the response."""
+    system_prompt_body = LLM_ASK_QUERY_TYPE.get(ask_type, "send me 'Unknown'")
+    system_content = SYSTEM_PROMPT_HEADER + system_prompt_body + SYSTEM_PROMPT_FOOTER
+    
+    payload = {
+        "model": LMSTUDIO_MODEL,
+        "messages": [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": temperature,
+        "max_tokens": 2000
+    }
+    
+    try:
+        response = requests.post(LMSTUDIO_API_URL, json=payload)
+        response.raise_for_status()  # Raise exception for HTTP errors
+        
+        response_json = response.json()
+        content = response_json['choices'][0]['message']['content'].strip()
+        
+        # Ensure response is a valid JSON string with "result" key
+        try:
+            # First try to parse it as JSON
+            parsed = json.loads(content)
+            # If it parses but doesn't have "result" key, wrap it
+            if "result" not in parsed:
+                return json.dumps({"result": parsed})
+            return content
+        except json.JSONDecodeError:
+            # If not valid JSON, wrap the raw text in a result object
+            return json.dumps({"result": content})
+            
+    except Exception as e:
+        print(f"Error calling LMStudio API: {str(e)}")
+        # Return a fallback JSON response
+        return json.dumps({"result": f"Error: {str(e)}"})
+
+def ask_chatgpt(ask_type: str, prompt: str, model: str="gpt-4o-mini-2024-07-18", max_tokens: int=2000, temperature: float=0, use_local: bool=False):
+    """
+    Send a request to either OpenAI API or LMStudio local API based on the use_local parameter.
+    
+    Args:
+        ask_type: Type of query to send
+        prompt: The user prompt
+        model: Model name (for OpenAI)
+        max_tokens: Maximum tokens in response
+        temperature: Temperature setting for generation
+        use_local: If True, use LMStudio instead of OpenAI
+    
+    Returns:
+        The response content
+    """
+    if use_local:
+        return ask_lmstudio(ask_type, prompt, temperature)
+    
+    # Default OpenAI behavior
     system_prompt_body = LLM_ASK_QUERY_TYPE.get(ask_type, "send me 'Unknown'")
     openai_client = create_openai_client()
     response = openai_client.chat.completions.create(
@@ -102,7 +165,6 @@ def ask_chatgpt(ask_type: str, prompt: str, model: str="gpt-4o-mini-2024-07-18",
         top_p=1,
         frequency_penalty=0,
         presence_penalty=0,
-
         # max_tokens=max_tokens
     )
     return response.choices[0].message.content.strip()
