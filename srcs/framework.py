@@ -411,18 +411,24 @@ def main():
         main_source=main_source,
         framework=framework_result
     )
-    retry_count = None # 0
-    if retry_count is not None:
-        for i in range():
-            endpoints_by_file, paths_by_file = endpoint_patterns_and_extract_endpoints(
-                main_folder, root_directory, main_source, framework_result, extensions
-            )
-            if retry_count > 0:
-                endpoints_by_file, paths_by_file = endpoint_patterns_and_extract_endpoints(
-                    main_folder, root_directory, main_source, framework_result, extensions
-                )
-            else:
-                break
+    
+    # Retry loop for endpoint extraction
+    retry_count = None
+    attempts = 0
+    while True:
+        endpoints_by_file, paths_by_file = endpoint_patterns_and_extract_endpoints(
+            main_folder, root_directory, main_source, framework_result, extensions
+        )
+        serialized = json.dumps(paths_by_file)
+        # Break if GET or POST endpoints found
+        if 'GET' in serialized or 'POST' in serialized:
+            break
+        attempts += 1
+        # Break if reached user-defined retry limit
+        if retry_count is not None and attempts >= retry_count:
+            print(f"[Main] Retry limit reached ({attempts}/{retry_count}), stopping retries.")
+            break
+        print(f"[Main] No endpoints found, retrying extraction ({attempts}/{retry_count if retry_count is not None else '∞'})")
     
 
     paths_by_file = concat_endpoint_results(paths_by_file)
