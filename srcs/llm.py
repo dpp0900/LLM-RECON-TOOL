@@ -89,7 +89,7 @@ def create_openai_client():
         raise ValueError("OpenAI API key not found. Ensure 'openai_key' file or environment variable is set.")
     return OpenAI(api_key=api_key)
 
-def ask_chatgpt(ask_type: str, prompt: str, model: str="gpt-4o-mini-2024-07-18", max_tokens: int=2000):
+def ask_chatgpt(ask_type: str, prompt: str, model: str="gpt-4o-mini-2024-07-18", max_tokens: int=2000, temperature: float=0):
     system_prompt_body = LLM_ASK_QUERY_TYPE.get(ask_type, "send me 'Unknown'")
     openai_client = create_openai_client()
     response = openai_client.chat.completions.create(
@@ -98,7 +98,7 @@ def ask_chatgpt(ask_type: str, prompt: str, model: str="gpt-4o-mini-2024-07-18",
             {"role": "system", "content": SYSTEM_PROMPT_HEADER + system_prompt_body + SYSTEM_PROMPT_FOOTER},
             {"role": "user", "content": prompt}
         ],
-        temperature=0,
+        temperature=temperature,
         top_p=1,
         frequency_penalty=0,
         presence_penalty=0,

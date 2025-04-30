@@ -30,8 +30,8 @@ def parse_result(res):
             raise ValueError("Invalid JSON format: 'result' key is missing.")
         return parsed.get("result", "No result found")
     except json.JSONDecodeError as e:
-        print(f"JSON 파싱 오류: {e}")
-        print(f"원본 응답: {res}")
+        print(f"JSON parsing error: {e}")
+        print(f"Original response: {res}")
         # JSON 복구 시도
         try:
             # 잘못된 따옴표, 공백 등을 수정
@@ -43,13 +43,13 @@ def parse_result(res):
             parsed = json.loads(fixed_res)
             if "result" not in parsed:
                 raise ValueError("Invalid JSON format after fixing: 'result' key is missing.")
-            print("JSON 복구 성공")
+            print("JSON recovery succeeded")
             return parsed.get("result", "No result found")
         except Exception as fix_error:
-            print(f"JSON 복구 실패: {fix_error}")
+            print(f"JSON recovery failed: {fix_error}")
             return "Failed to parse response"
     except ValueError as ve:
-        print(f"JSON 값 오류: {ve}")
+        print(f"JSON value error: {ve}")
         return "Failed to parse response"
 
 def check_path_exists(path):
@@ -65,10 +65,10 @@ def identify_main_folder(root_directory):
     res = ask_chatgpt("identify_main_folder", str(dirs))
     return parse_result(res)
 
-def identify_main_source(folder_path):
+def identify_main_source(folder_path, temperature=0):
     """identify_main_source 작업을 수행합니다."""
     files = list_all_files(folder_path)
-    res = ask_chatgpt("identify_main_source", str(files))
+    res = ask_chatgpt("identify_main_source", str(files), temperature=temperature)
     return parse_result(res)
 
 def identify_framework(file_path):
@@ -86,7 +86,7 @@ def identify_service_name(folder_path):
     res = ask_chatgpt("identify_service_name", str(dirs))
     return parse_result(res)
 
-def get_endpoint_patterns(file_path, framework):
+def get_endpoint_patterns(file_path, framework, temperature=0):
     """파일 내용을 읽고 엔드포인트 패턴을 식별합니다."""
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
@@ -98,8 +98,8 @@ def get_endpoint_patterns(file_path, framework):
         "framework": framework
     }
     
-    res = ask_chatgpt("how_to_reconginize_endpoint", str(prompt))
-    print("ChatGPT 응답:", res)
+    res = ask_chatgpt("how_to_reconginize_endpoint", str(prompt), temperature=temperature)
+    print("ChatGPT response:", res)
     return parse_result(res)
 
 def get_all_extension_files(root_directory, extensions):
@@ -119,7 +119,7 @@ def validate_regex_patterns(regex_patterns):
             re.compile(pattern)  # 패턴 컴파일 시도
             valid_patterns.append(pattern)
         except re.error as e:
-            print(f"유효하지 않은 패턴: {pattern} - 오류: {e}")
+            print(f"Invalid pattern: {pattern} - error: {e}")
     return valid_patterns
 
 def extract_endpoints(root_directory, extensions, endpoint_patterns):
@@ -130,10 +130,10 @@ def extract_endpoints(root_directory, extensions, endpoint_patterns):
             re.compile(pattern)  # 패턴 컴파일 시도
             valid_patterns[method] = pattern
         except re.error as e:
-            print(f"유효하지 않은 패턴 ({method}): {pattern} - 오류: {e}")
+            print(f"Invalid pattern ({method}): {pattern} - error: {e}")
 
     if not valid_patterns:
-        print("유효한 정규 표현식 패턴이 없습니다.")
+        print("No valid regex patterns found.")
         return {}
 
     all_files = get_all_extension_files(root_directory, extensions)
@@ -152,7 +152,7 @@ def extract_endpoints(root_directory, extensions, endpoint_patterns):
                     file_endpoints[method].extend(matches)
             if file_endpoints:  # 해당 파일에서 엔드포인트가 발견된 경우만 추가
                 endpoints_by_file[file_path] = file_endpoints
-                print(f"파일 {file_path}에서 엔드포인트 발견: {file_endpoints}")
+                print(f"Found endpoints in file {file_path}: {file_endpoints}")
 
     return endpoints_by_file
 
@@ -166,7 +166,7 @@ def extract_code_from_endpoint(root_directory, endpoints_by_file):
 
     for file_path, endpoints in endpoints_by_file.items():
         if not os.path.exists(file_path):
-            print(f"파일을 찾을 수 없습니다: {file_path}")
+            print(f"File not found: {file_path}")
             continue
 
         with open(file_path, "r") as file:
@@ -190,7 +190,7 @@ def extract_code_from_endpoint(root_directory, endpoints_by_file):
                         break
 
                 if start_index is None:
-                    print(f"엔드포인트를 찾을 수 없습니다: {endpoint}")
+                    print(f"Endpoint not found: {endpoint}")
                     continue
 
                 # 다음 엔드포인트의 시작 위치를 전체 엔드포인트에서 탐색
@@ -237,7 +237,7 @@ def parse_path_from_endpoint(endpoints_by_file):
                     path = match.group(2)
                     paths_by_file[file_path][method].append(path)
                 else:
-                    print(f"패턴을 찾을 수 없습니다: {endpoint}")
+                    print(f"Pattern not found: {endpoint}")
                     paths_by_file[file_path][method].append(endpoint)
     return paths_by_file
 
@@ -340,71 +340,107 @@ def update_endpoint(endpoint, description):
     # endpoint.dependencies = description.get("dependencies", endpoint.dependencies)
     endpoint.response_type = description.get("response_type", endpoint.response_type)
     endpoint.description = description.get("description", endpoint.description)
-    
-    
+
+def endpoint_patterns_and_extract_endpoints(main_folder, root_directory, main_source, framework_result, extensions):
+    """
+    엔드포인트 패턴을 인식하고 엔드포인트 및 경로 정보를 추출합니다.
+
+    Parameters:
+      main_folder (str): 주요 프로젝트 폴더 경로
+      root_directory (str): 분석할 루트 디렉토리
+      main_source (str): 주요 소스 파일 경로
+      framework_result (str): 식별된 프레임워크 정보
+      extensions (list): 처리할 파일 확장자 리스트
+
+    Returns:
+      tuple: (endpoints_by_file, paths_by_file)
+    """
+    patterns = get_endpoint_patterns(main_source, framework_result)
+    for method, pattern in patterns.items():
+        print(f"[Pattern] {method}: {pattern}")
+
+    endpoints_by_file = extract_endpoints(root_directory, extensions, patterns)
+    paths_by_file = parse_path_from_endpoint(endpoints_by_file)
+    print("\n[Endpoints] extraction result:")
+    print(json.dumps(paths_by_file, indent=2))
+
+    serialized = json.dumps(paths_by_file)
+    if not ('GET' in serialized or 'POST' in serialized):
+        print("[Retry] No GET/POST endpoints found, retrying with temperature=1")
+        main_source = identify_main_source(main_folder, temperature=1)
+        framework_result = identify_framework(main_source)
+        patterns = get_endpoint_patterns(main_source, framework_result, temperature=1)
+        endpoints_by_file = extract_endpoints(root_directory, extensions, patterns)
+        paths_by_file = parse_path_from_endpoint(endpoints_by_file)
+        print("\n[Endpoints] result after retry:")
+        print(json.dumps(paths_by_file, indent=2))
+
+    return endpoints_by_file, paths_by_file
 
 def main():
-    """메인 실행 함수."""
-    root_directory = "../target/Piggy-bank/sources/com/teamsa/"  # 분석할 루트 디렉토리
+    """
+    메인 실행 함수
 
-    # Step 1: identify_main_folder
+    Steps:
+      1. 주요 폴더 및 소스 파일 식별
+      2. 프레임워크 및 서비스 분석
+      3. 엔드포인트 패턴 추출 및 처리
+      4. 각 엔드포인트 설명 생성
+    """
+    root_directory = "../target/Piggy-bank/sources/com/teamsa/"
+
     main_folder = identify_main_folder(root_directory)
     if not check_path_exists(main_folder):
         return
-    print("identify_main_folder 결과:", main_folder)
+    print(f"[Step1] Main folder: {main_folder}")
 
-    # Step 2: identify_main_source
     main_source = identify_main_source(main_folder)
     if not check_path_exists(main_source):
         return
-    extension = main_source.split(".")[-1]
+    extension = main_source.rsplit('.', 1)[-1]
     extensions = [f".{extension}"]
-    print("identify_main_source 결과:", main_source)
+    print(f"[Step2] Main source file: {main_source}")
 
-    # Step 3: analyze the main source file
     framework_result = identify_framework(main_source)
-    print("최종 분석 결과:", framework_result)
-
+    print(f"[Step3] Framework: {framework_result}")
     service_name = identify_service_name(main_folder)
-    print("서비스 이름:", service_name)
-
-    service = model.Service(name=service_name, root_directory=root_directory, main_source=main_source, framework=framework_result)
-
-    # Step 4: get endpoint patterns
-    endpoint_patterns = get_endpoint_patterns(main_source, framework_result)
-    for method, pattern in endpoint_patterns.items():
-        print(f"{method} 패턴: {pattern}")
-
-    # Step 5: extract endpoints
-    endpoints_by_file = extract_endpoints(root_directory, extensions, endpoint_patterns)
-    paths_by_file = parse_path_from_endpoint(endpoints_by_file)
-    print("\n엔드포인트 결과:")
-    print(json.dumps(paths_by_file, indent=2))
+    print(f"[Service] Name: {service_name}")
+    service = model.Service(
+        name=service_name,
+        root_directory=root_directory,
+        main_source=main_source,
+        framework=framework_result
+    )
+    retry_count = None # 0
+    if retry_count is not None:
+        for i in range():
+            endpoints_by_file, paths_by_file = endpoint_patterns_and_extract_endpoints(
+                main_folder, root_directory, main_source, framework_result, extensions
+            )
+            if retry_count > 0:
+                endpoints_by_file, paths_by_file = endpoint_patterns_and_extract_endpoints(
+                    main_folder, root_directory, main_source, framework_result, extensions
+                )
+            else:
+                break
+    
 
     paths_by_file = concat_endpoint_results(paths_by_file)
-    print("\n최종 엔드포인트 결과:")
+    print("\n[Combined Endpoints]:")
     print(json.dumps(paths_by_file, indent=2))
-
     endpoints_code_by_file = extract_code_from_endpoint(root_directory, endpoints_by_file)
-    print("\n엔드포인트 코드 결과:")
+    print("\n[Endpoint Code]:")
     print(json.dumps(endpoints_code_by_file, indent=2))
 
-    # Step 6: add endpoints to service
     add_endpoint_to_service(service, endpoints_by_file, paths_by_file, endpoints_code_by_file)
-    print("\nService 엔드포인트 추가 결과:")
+    print("\n[Service Endpoints]:")
     print(json.dumps(service.describe(), indent=2))
-    
-    # Step 7: describe each endpoint
-    for endpoint in service.endpoints:
-        description = explain_endpoint(endpoint)
-        update_endpoint(endpoint, description)
-        print(f"\n엔드포인트 설명 결과 ({endpoint.path}):")
-        print(json.dumps(description, indent=2))
-        
-        # print(f"dependency: {description.get('dependencies', [])}")
-        # print(f"\n엔드포인트 설명 결과 ({endpoint.path}):")
-        # print(json.dumps(description, indent=2))
 
+    for endpoint in service.endpoints:
+        desc = explain_endpoint(endpoint)
+        update_endpoint(endpoint, desc)
+        print(f"\n[Description] {endpoint.path}")
+        print(json.dumps(desc, indent=2))
 
 if __name__ == "__main__":
     main()
