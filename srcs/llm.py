@@ -36,7 +36,7 @@ LLM_ASK_QUERY_TYPE = {
 3. **Cookies**: Any cookies used in the endpoint (e.g., `session_id`).
 4. **Parameters**: A list of parameters used in the endpoint (e.g., `user_id`, `page`).
 5. **HTTP Headers**: Any HTTP headers used in the endpoint (e.g., `Authorization`, `Content-Type`).
-6. **Dependencies**: Any endpoint refer, href, dependency, or related endpoints (e.g., `/api/users/{id}`).
+6. **Dependencies**: Any endpoint refer, href, dependency, or related endpoints with "method" (e.g., `GET:/api/users/{id}`).
 7. **Response Type**: The type of response returned by the endpoint (e.g., JSON, XML, HTML).
 8. **Description**: A human-readable description of the endpoint's purpose. Longer descriptions are preferred.
 
@@ -57,7 +57,7 @@ LLM_ASK_QUERY_TYPE = {
             "cookies": ["session_id"],
             "params": ["user_id", "page"],
             "headers": ["Authorization", "Content-Type"],
-            "dependencies": ["/api/users/{id}"],
+            "dependencies": ["GET:/api/users/{id}"],
             "response_type": "JSON",
             "description": "Get user information"
         }

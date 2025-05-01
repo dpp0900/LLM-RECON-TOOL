@@ -343,27 +343,76 @@ def explain_endpoint(endpoint, use_local=False):
     return desc
 
 def visualize_dependency_graph(service):
-    """Service 객체의 의존성 그래프를 시각화합니다."""
+    """Service 및 Endpoint 간의 의존성 그래프를 path/name 기반으로 시각화합니다."""
     import networkx as nx
     import matplotlib.pyplot as plt
 
-    # 그래프 데이터 가져오기
-    graph_data = service.dependencies.describe()
+    # 1. id → label 매핑 생성
+    id_to_label = {}
 
-    # NetworkX 그래프 생성
+    # 서비스
+    id_to_label[service.id] = service.name
+
+    # 엔드포인트
+    for endpoint in service.endpoints:
+        id_to_label[endpoint.id] = f"{endpoint.method} {endpoint.path}"
+
+        # 엔드포인트 간 의존성도 매핑
+        for from_id, to_ids in endpoint.dependencies.describe().items():
+            # from_id는 endpoint.id, to_ids는 endpoint id 리스트
+            id_to_label[from_id] = next(
+                (f"{ep.method} {ep.path}" for ep in service.endpoints if ep.id == from_id),
+                from_id
+            )
+            for to_id in to_ids:
+                id_to_label[to_id] = next(
+                    (f"{ep.method} {ep.path}" for ep in service.endpoints if ep.id == to_id),
+                    to_id
+                )
+
+    # 데이터베이스
+    if service.database:
+        id_to_label[service.database.id] = f"DB: {service.database.db_type}"
+
+    # 2. 전체 의존성 그래프 edge 수집
+    edges = []
+    # 서비스 전체 의존성
+    for from_id, to_ids in service.dependencies.describe().items():
+        for to_id in to_ids:
+            edges.append((from_id, to_id))
+    # 엔드포인트 간 의존성
+    for endpoint in service.endpoints:
+        for from_id, to_ids in endpoint.dependencies.describe().items():
+            for to_id in to_ids:
+                edges.append((from_id, to_id))
+    # 데이터베이스 의존성
+    if service.database:
+        for from_id, to_ids in service.database.dependencies.describe().items():
+            for to_id in to_ids:
+                edges.append((from_id, to_id))
+
+    # 3. NetworkX 그래프 생성
     G = nx.DiGraph()
-    for from_node, to_nodes in graph_data.items():
-        for to_node in to_nodes:
-            G.add_edge(from_node, to_node)
+    for from_id, to_id in edges:
+        G.add_edge(id_to_label.get(from_id, from_id), id_to_label.get(to_id, to_id))
 
-    # 그래프 레이아웃 설정 (spring_layout 사용)
-    pos = nx.spring_layout(G, k=0.5)  # k 값으로 노드 간의 간격 조정
-
-    # 그래프 시각화
-    plt.figure(figsize=(14, 10))  # 그래프 크기 조정
-    nx.draw(G, pos, with_labels=True, node_color="lightblue", font_weight="bold", node_size=2000, arrowsize=20)
-    plt.title("Dependency Graph")
+    # 4. 그래프 시각화
+    pos = nx.spring_layout(G, k=0.5)
+    plt.figure(figsize=(14, 10))
+    nx.draw(
+        G, pos, with_labels=True, node_color="lightblue",
+        font_weight="bold", node_size=2000, arrowsize=20
+    )
+    plt.title("Dependency Graph (Service/Endpoint by Path)")
     plt.show()
+    
+def lookup_endpoint_id_by_path(service, path):
+    method = path.split(":")[0]
+    path = path.split(":")[1]
+    for endpoint in service.endpoints:
+        if endpoint.method == method and endpoint.path == path:
+            return endpoint.id
+    return None
     
 def update_endpoint(endpoint, description):
     endpoint.path = description.get("path", endpoint.path)
@@ -374,6 +423,17 @@ def update_endpoint(endpoint, description):
     # endpoint.dependencies = description.get("dependencies", endpoint.dependencies)
     endpoint.response_type = description.get("response_type", endpoint.response_type)
     endpoint.description = description.get("description", endpoint.description)
+
+def update_endpoint_dependencies(service, endpoint, dependencies):
+    """
+    엔드포인트의 의존성을 업데이트합니다.
+    """
+    for dep in dependencies:
+        method, path = dep.split(":")
+        dep_id = lookup_endpoint_id_by_path(service, dep)
+        if dep_id:
+            endpoint.dependencies.add_dependency(endpoint.id, dep_id)
+            print(f"[Dependency] {endpoint.method} {endpoint.path} -> {dep}")
 
 def endpoint_patterns_and_extract_endpoints(main_folder, root_directory, main_source, framework_result, extensions, use_local=False):
     """
@@ -488,6 +548,11 @@ def main():
         update_endpoint(endpoint, desc)
         print(f"\n[Description] {endpoint.path}")
         print(json.dumps(desc, indent=2))
+        update_endpoint_dependencies(service, endpoint, desc.get("dependencies", []))
+    
+    # 시각화
+    visualize_dependency_graph(service)
+    
 
 if __name__ == "__main__":
     main()
