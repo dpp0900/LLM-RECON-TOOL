@@ -459,10 +459,10 @@ def visualize_dependency_graph(service):
         if node_type == "service":
             service_obj = service
             title = (
-                "Service<br>"
-                f"Name: {service_obj.name}<br>"
-                f"Framework: {service_obj.framework}<br>"
-                f"Main Source: {service_obj.main_source}<br>"
+                "Service\n"
+                f"Name: {service_obj.name}\n"
+                f"Framework: {service_obj.framework}\n"
+                f"Main Source: {service_obj.main_source}\n"
                 f"Root Dir: {service_obj.root_directory}"
             )
         elif node_type == "endpoint":
@@ -470,14 +470,14 @@ def visualize_dependency_graph(service):
             if endpoint_obj:
                 desc = getattr(endpoint_obj, 'description', '')
                 if desc:
-                    desc = desc.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>')
+                    desc = desc.replace('\r\n', '\n').replace('\r', '\n').replace('<br>', '\n')
                 title = (
-                    "Endpoint<br>"
-                    f"Path: {endpoint_obj.path}<br>"
-                    f"Method: {endpoint_obj.method}<br>"
-                    f"File: {endpoint_obj.file_path}<br>"
-                    f"Params: {getattr(endpoint_obj, 'params', '')}<br>"
-                    f"Response: {getattr(endpoint_obj, 'response_type', '')}<br>"
+                    "Endpoint\n"
+                    f"Path: {endpoint_obj.path}\n"
+                    f"Method: {endpoint_obj.method}\n"
+                    f"File: {endpoint_obj.file_path}\n"
+                    f"Params: {getattr(endpoint_obj, 'params', '')}\n"
+                    f"Response: {getattr(endpoint_obj, 'response_type', '')}\n"
                     f"Description: {desc}"
                 )
             else:
@@ -485,9 +485,9 @@ def visualize_dependency_graph(service):
         elif node_type == "database":
             db_obj = service.database
             title = (
-                "Database<br>"
-                f"Type: {db_obj.db_type}<br>"
-                f"Purpose: {db_obj.purpose}<br>"
+                "Database\n"
+                f"Type: {db_obj.db_type}\n"
+                f"Purpose: {db_obj.purpose}\n"
                 f"Conn: {db_obj.connection_string}"
             )
         else:
@@ -501,7 +501,7 @@ def visualize_dependency_graph(service):
             font={"size": 22, "color": "#222222", "face": "Segoe UI"},
             borderWidth=2,
             shadow=False,
-            title=title  # 이제 <br>로 줄바꿈
+            title=title  # title에 \n을 사용
         )
 
     for from_id, to_id in edges:
@@ -516,28 +516,26 @@ def visualize_dependency_graph(service):
 
     net.write_html("dependency_graph.html")
 
-    # HTML 파일 post-process: tooltip의 <br>을 줄바꿈으로 보이게 JS 코드 삽입
+    # HTML 파일 post-process: .vis-tooltip 스타일 커스터마이즈
     html_path = "dependency_graph.html"
     with open(html_path, "r", encoding="utf-8") as f:
         html_content = f.read()
 
-    # 더 안전한 방식: 마우스오버 시 한 번만 줄바꿈 처리
-    custom_js = """
-    <script>
-    document.addEventListener("mouseover", function(e) {
-        var tooltips = document.getElementsByClassName("vis-tooltip");
-        for (var i = 0; i < tooltips.length; i++) {
-            var el = tooltips[i];
-            if (!el.dataset.brFixed) {
-                el.innerHTML = el.innerHTML.replace(/<br\\s*\\/?/gi, "<br>");
-                el.dataset.brFixed = "1";
-            }
-        }
-    });
-    </script>
+    # 툴팁 스타일: 최대너비, 자동 줄바꿈, 스크롤, 폰트 등
+    custom_css = """
+    <style>
+    .vis-tooltip {
+        max-width: 400px !important;
+        white-space: pre-line !important;
+        word-break: break-all !important;
+        overflow-x: auto !important;
+        font-size: 14px !important;
+        z-index: 9999 !important;
+    }
+    </style>
     """
 
-    html_content = html_content.replace("</body>", custom_js + "\n</body>")
+    html_content = html_content.replace("</head>", custom_css + "\n</head>")
 
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html_content)
