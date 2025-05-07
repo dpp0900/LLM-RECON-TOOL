@@ -117,13 +117,13 @@ def get_endpoint_patterns(file_path, framework, temperature=0, use_local=False):
     # 파싱 시도
     patterns = parse_result(res)
     # 결과가 dict이 아니거나 빈 dict인 경우, Spring 기본 패턴 폴백
-    if not isinstance(patterns, dict) or not patterns:
-        print(f"[Fallback] Applying built-in endpoint patterns for framework '{framework}'")
-        patterns = {
-            "ALL": ".*@RequestMapping\\s*({.*?})",
-            "GET": ".*@GetMapping\\s*({.*?})",
-            "POST": ".*@PostMapping\\s*({.*?})"
-        }
+    # if not isinstance(patterns, dict) or not patterns:
+    #     print(f"[Fallback] Applying built-in endpoint patterns for framework '{framework}'")
+    #     patterns = {
+    #         "ALL": ".*@RequestMapping\\s*({.*?})",
+    #         "GET": ".*@GetMapping\\s*({.*?})",
+    #         "POST": ".*@PostMapping\\s*({.*?})"
+    #     }
     return patterns
 
 def get_all_extension_files(root_directory, extensions):
@@ -623,7 +623,7 @@ def main():
         use_local = True
         print("[Config] LMStudio LOCAL mode enabled: using qwen3-8b-mlx model")
     
-    root_directory = "../target/Piggy-bank/sources/com/teamsa/"
+    root_directory = "../target"
 
     main_folder = identify_main_folder(root_directory, use_local)
     if not check_path_exists(main_folder):

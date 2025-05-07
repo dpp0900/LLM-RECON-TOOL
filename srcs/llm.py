@@ -25,7 +25,7 @@ LLM_ASK_QUERY_TYPE = {
     "POST": "regex_for_post"
 }
 6. The "ALL" key should include patterns for annotations or functions that do not specify a specific HTTP method (e.g., @RequestMapping without a method).
-7. Result of regex should be line of code containing endpoint. (e.g.,`@GetMapping("/api/users")`)
+7. Result of regex should be line of code containing endpoint. (e.g.,`@GetMapping("/api/users"), @app.route("/api/users")`)
 8. **The regex should be most simple and easy to make it work.**
 9. Do not include any additional text or explanations outside the specified format.'''
 ,
