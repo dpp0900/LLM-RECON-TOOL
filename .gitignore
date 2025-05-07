@@ -212,3 +212,5 @@ pyrightconfig.json
 srcs/openai_key
 
 target/
+
+dependency_graph.html
