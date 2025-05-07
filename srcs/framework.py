@@ -343,68 +343,205 @@ def explain_endpoint(endpoint, use_local=False):
     return desc
 
 def visualize_dependency_graph(service):
-    """Service 및 Endpoint 간의 의존성 그래프를 path/name 기반으로 시각화합니다."""
-    import networkx as nx
-    import matplotlib.pyplot as plt
+    from pyvis.network import Network
+    import html
 
-    # 1. id → label 매핑 생성
     id_to_label = {}
+    id_to_type = {}
 
-    # 서비스
     id_to_label[service.id] = service.name
+    id_to_type[service.id] = "service"
 
-    # 엔드포인트
     for endpoint in service.endpoints:
         id_to_label[endpoint.id] = f"{endpoint.method} {endpoint.path}"
-
-        # 엔드포인트 간 의존성도 매핑
+        id_to_type[endpoint.id] = "endpoint"
         for from_id, to_ids in endpoint.dependencies.describe().items():
-            # from_id는 endpoint.id, to_ids는 endpoint id 리스트
             id_to_label[from_id] = next(
                 (f"{ep.method} {ep.path}" for ep in service.endpoints if ep.id == from_id),
                 from_id
             )
+            id_to_type[from_id] = "endpoint"
             for to_id in to_ids:
                 id_to_label[to_id] = next(
                     (f"{ep.method} {ep.path}" for ep in service.endpoints if ep.id == to_id),
                     to_id
                 )
+                id_to_type[to_id] = "endpoint"
 
-    # 데이터베이스
     if service.database:
         id_to_label[service.database.id] = f"DB: {service.database.db_type}"
+        id_to_type[service.database.id] = "database"
 
-    # 2. 전체 의존성 그래프 edge 수집
     edges = []
-    # 서비스 전체 의존성
     for from_id, to_ids in service.dependencies.describe().items():
         for to_id in to_ids:
             edges.append((from_id, to_id))
-    # 엔드포인트 간 의존성
     for endpoint in service.endpoints:
         for from_id, to_ids in endpoint.dependencies.describe().items():
             for to_id in to_ids:
                 edges.append((from_id, to_id))
-    # 데이터베이스 의존성
     if service.database:
         for from_id, to_ids in service.database.dependencies.describe().items():
             for to_id in to_ids:
                 edges.append((from_id, to_id))
 
-    # 3. NetworkX 그래프 생성
-    G = nx.DiGraph()
-    for from_id, to_id in edges:
-        G.add_edge(id_to_label.get(from_id, from_id), id_to_label.get(to_id, to_id))
-
-    # 4. 그래프 시각화
-    pos = nx.spring_layout(G, k=0.5)
-    plt.figure(figsize=(14, 10))
-    nx.draw(
-        G, pos, with_labels=True, node_color="lightblue",
-        font_weight="bold", node_size=2000, arrowsize=20
+    net = Network(
+        height="1000px",
+        width="100%",
+        directed=True,
+        notebook=False,
+        bgcolor="#ffffff",
+        font_color="#222222"
     )
-    plt.title("Dependency Graph (Service/Endpoint by Path)")
-    plt.show()
+
+    net.set_options("""
+    {
+    "physics": { "enabled": false },
+    "layout": {
+        "improvedLayout": true,
+        "hierarchical": {
+        "enabled": true,
+        "direction": "UD",
+        "levelSeparation": 400,
+        "nodeSpacing": 300,
+        "treeSpacing": 600,
+        "sortMethod": "hubsize"
+        }
+    },
+    "nodes": {
+        "font": { "size": 22, "color": "#222222", "face": "Segoe UI" },
+        "borderWidth": 2,
+        "borderWidthSelected": 4,
+        "color": {
+        "border": "#bdbdbd",
+        "background": "#e3f2fd",
+        "highlight": { "border": "#1976d2", "background": "#bbdefb" },
+        "hover": { "border": "#388e3c", "background": "#c8e6c9" }
+        },
+        "shadow": false,
+        "shape": "box",
+        "margin": 20,
+        "scaling": {
+        "min": 10,
+        "max": 30,
+        "label": { "enabled": false }
+        }
+    },
+    "edges": {
+        "color": "#90caf9",
+        "width": 2.5,
+        "arrows": { "to": { "enabled": true, "scaleFactor": 1.2 } },
+        "smooth": { "enabled": true, "type": "cubicBezier" },
+        "shadow": false
+    },
+    "interaction": {
+        "hover": true,
+        "tooltipDelay": 30,
+        "navigationButtons": true,
+        "keyboard": true
+    }
+    }
+    """)
+
+    color_map = {
+        "service": "#bbdefb",
+        "endpoint": "#c8e6c9",
+        "database": "#ffe0b2"
+    }
+    shape_map = {
+        "service": "box",
+        "endpoint": "ellipse",
+        "database": "database"
+    }
+
+    for node_id, label in id_to_label.items():
+        node_type = id_to_type.get(node_id, "endpoint")
+        if node_type == "service":
+            service_obj = service
+            title = (
+                "Service<br>"
+                f"Name: {service_obj.name}<br>"
+                f"Framework: {service_obj.framework}<br>"
+                f"Main Source: {service_obj.main_source}<br>"
+                f"Root Dir: {service_obj.root_directory}"
+            )
+        elif node_type == "endpoint":
+            endpoint_obj = next((ep for ep in service.endpoints if ep.id == node_id), None)
+            if endpoint_obj:
+                desc = getattr(endpoint_obj, 'description', '')
+                if desc:
+                    desc = desc.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>')
+                title = (
+                    "Endpoint<br>"
+                    f"Path: {endpoint_obj.path}<br>"
+                    f"Method: {endpoint_obj.method}<br>"
+                    f"File: {endpoint_obj.file_path}<br>"
+                    f"Params: {getattr(endpoint_obj, 'params', '')}<br>"
+                    f"Response: {getattr(endpoint_obj, 'response_type', '')}<br>"
+                    f"Description: {desc}"
+                )
+            else:
+                title = label
+        elif node_type == "database":
+            db_obj = service.database
+            title = (
+                "Database<br>"
+                f"Type: {db_obj.db_type}<br>"
+                f"Purpose: {db_obj.purpose}<br>"
+                f"Conn: {db_obj.connection_string}"
+            )
+        else:
+            title = label
+
+        net.add_node(
+            node_id,
+            label=label,
+            color=color_map.get(node_type, "#e0e0e0"),
+            shape=shape_map.get(node_type, "ellipse"),
+            font={"size": 22, "color": "#222222", "face": "Segoe UI"},
+            borderWidth=2,
+            shadow=False,
+            title=title  # 이제 <br>로 줄바꿈
+        )
+
+    for from_id, to_id in edges:
+        net.add_edge(
+            from_id, to_id,
+            color="#90caf9",
+            width=2.5,
+            arrows="to",
+            smooth=True,
+            shadow=False
+        )
+
+    net.write_html("dependency_graph.html")
+
+    # HTML 파일 post-process: tooltip의 <br>을 줄바꿈으로 보이게 JS 코드 삽입
+    html_path = "dependency_graph.html"
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    # 더 안전한 방식: 마우스오버 시 한 번만 줄바꿈 처리
+    custom_js = """
+    <script>
+    document.addEventListener("mouseover", function(e) {
+        var tooltips = document.getElementsByClassName("vis-tooltip");
+        for (var i = 0; i < tooltips.length; i++) {
+            var el = tooltips[i];
+            if (!el.dataset.brFixed) {
+                el.innerHTML = el.innerHTML.replace(/<br\\s*\\/?/gi, "<br>");
+                el.dataset.brFixed = "1";
+            }
+        }
+    });
+    </script>
+    """
+
+    html_content = html_content.replace("</body>", custom_js + "\n</body>")
+
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    print("dependency_graph.html generated.")
     
 def lookup_endpoint_id_by_path(service, path):
     method = path.split(":")[0]
@@ -552,7 +689,7 @@ def main():
     
     # 시각화
     visualize_dependency_graph(service)
-    
+
 
 if __name__ == "__main__":
     main()
