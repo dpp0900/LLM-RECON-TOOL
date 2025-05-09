@@ -79,8 +79,8 @@ SYSTEM_PROMPT_FOOTER = '''Your response must strictly follow this format: {"resu
 
 # LMStudio API settings
 #LMSTUDIO_API_URL = "http://localhost:1234/v1/chat/completions"
-LMSTUDIO_API_URL = "http://localhost:1234/v1/chat/completions"
-LMSTUDIO_MODEL = "qwen3-8b"  # Default model name (changed to qwen3-8b-mlx for LOCAL)
+LMSTUDIO_API_URL = "http://localhost:1234/v1/chat/completions"  # Local API URL
+LMSTUDIO_MODEL = "gemma-3-12b-it-qat"  # Default model name (changed to qwen3-8b-mlx for LOCAL)
 
 def get_openai_api_key():
     """Reads the OpenAI API key from a file or environment variable."""
@@ -116,6 +116,10 @@ def ask_lmstudio(ask_type: str, prompt: str, temperature: float=0):
         response.raise_for_status()  # Raise exception for HTTP errors
         
         response_json = response.json()
+        if 'choices' not in response_json or not response_json['choices']:
+            print(f"[Error] Invalid response format from LMStudio: {response_json}")
+            return json.dumps({"result": "Error: Invalid response format from LMStudio"})
+            
         content = response_json['choices'][0]['message']['content'].strip()
         
         # Ensure response is a valid JSON string with "result" key
@@ -130,10 +134,12 @@ def ask_lmstudio(ask_type: str, prompt: str, temperature: float=0):
             # If not valid JSON, wrap the raw text in a result object
             return json.dumps({"result": content})
             
+    except requests.exceptions.RequestException as e:
+        print(f"[Error] LMStudio API request failed: {str(e)}")
+        return json.dumps({"result": f"Error: LMStudio API request failed - {str(e)}"})
     except Exception as e:
-        print(f"Error calling LMStudio API: {str(e)}")
-        # Return a fallback JSON response
-        return json.dumps({"result": f"Error: {str(e)}"})
+        print(f"[Error] Unexpected error in LMStudio API call: {str(e)}")
+        return json.dumps({"result": f"Error: Unexpected error - {str(e)}"})
 
 def ask_chatgpt(ask_type: str, prompt: str, model: str="gpt-4o-mini-2024-07-18", max_tokens: int=2000, temperature: float=0, use_local: bool=False):
     """

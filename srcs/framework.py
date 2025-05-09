@@ -623,7 +623,7 @@ def main():
         use_local = True
         print("[Config] LMStudio LOCAL mode enabled: using qwen3-8b-mlx model")
     
-    root_directory = "../target"
+    root_directory = "../target/" #/Piggy-bank/sources/com/teamsa/"
 
     main_folder = identify_main_folder(root_directory, use_local)
     if not check_path_exists(main_folder):
