@@ -6,7 +6,7 @@ from openai import OpenAI
 LLM_ASK_QUERY_TYPE = {
     "identify_main_folder": '''Your task is to identify and return ONLY ONE path to the folder that most likely contains the main "SOURCE" code of the web service (e.g., *.py, *.java, *.php, etc.). Analyze the provided list of subdirectories and exclude irrelevant folders such as `BOOT-INF/` or other auxiliary directories. Provide your answer in the specified format.''',
     
-    "identify_main_source": '''Your task is to identify and return ONLY ONE "SOURCE" FILE path that most likely contains the main source code of the web service (MUST CONTAIN ENDPOINT). Analyze the provided list of files and focus on files with relevant extensions (e.g., *.py, *.java, *.php, etc.). Consider indicators such as entry points, main functions, or framework-specific files. Provide your answer in the specified format.''',
+    "identify_main_source": '''Your task is to identify and return ONLY ONE "SOURCE" "FILE" path that most likely contains the main source code of the web service (MUST CONTAIN ENDPOINT) (NOT DIRECTORY OR FOLDER PATH). Analyze the provided list of files and focus on files with relevant extensions (e.g., *.py, *.java, *.php, etc.). Consider indicators such as entry points, main functions, or framework-specific files. Provide your answer in the specified format.''',
     
     "identify_framework": '''Your task is to identify the framework of the web service based on the provided source code file. Analyze the code carefully to determine the framework (e.g., Django, Flask, Spring, Express). If the framework is not clear, ask for clarification. Provide ONLY the name of the framework in the specified format.''',
     
@@ -36,7 +36,7 @@ LLM_ASK_QUERY_TYPE = {
 3. **Cookies**: Any cookies used in the endpoint (e.g., `session_id`).
 4. **Parameters**: A list of parameters used in the endpoint (e.g., `user_id`, `page`).
 5. **HTTP Headers**: Any HTTP headers used in the endpoint (e.g., `Authorization`, `Content-Type`).
-6. **Dependencies**: Any endpoint refer, href, dependency, or related endpoints with "method" (e.g., `GET:/api/users/{id}`).
+6. **Dependencies**: Any endpoint refer, href, dependency, or related endpoints with "method". Add whatever you can guess. (e.g., `GET:/api/users/{id}`).
 7. **Response Type**: The type of response returned by the endpoint (e.g., JSON, XML, HTML).
 8. **Description**: A human-readable description of the endpoint's purpose. Longer descriptions are preferred.
 
@@ -135,37 +135,65 @@ def ask_lmstudio(ask_type: str, prompt: str, temperature: float=0):
         # Return a fallback JSON response
         return json.dumps({"result": f"Error: {str(e)}"})
 
-def ask_chatgpt(ask_type: str, prompt: str, model: str="gpt-4o-mini-2024-07-18", max_tokens: int=2000, temperature: float=0, use_local: bool=False):
+# 스트림 메시지 히스토리를 모듈 전역에서 관리
+_ASK_CHATGPT_MESSAGES = {}
+_ASK_CHATGPT_LAST_TYPE = {}
+
+def ask_chatgpt(
+    ask_type: str,
+    prompt: str,
+    model: str = "gpt-4o-mini-2024-07-18",
+    max_tokens: int = 2000,
+    temperature: float = 0,
+    use_local: bool = False,
+    stream_id: str = "default"
+):
     """
-    Send a request to either OpenAI API or LMStudio local API based on the use_local parameter.
-    
-    Args:
-        ask_type: Type of query to send
-        prompt: The user prompt
-        model: Model name (for OpenAI)
-        max_tokens: Maximum tokens in response
-        temperature: Temperature setting for generation
-        use_local: If True, use LMStudio instead of OpenAI
-    
-    Returns:
-        The response content
+    Unified LLM query stream for both OpenAI and LMStudio.
+    Maintains a message stream per stream_id.
+    Resets system prompt if ask_type changes.
+    Returns the response content as a string.
     """
+    global _ASK_CHATGPT_MESSAGES, _ASK_CHATGPT_LAST_TYPE
+
+    # ask_type이 바뀌면 messages를 리셋
+    if (stream_id not in _ASK_CHATGPT_MESSAGES) or (_ASK_CHATGPT_LAST_TYPE.get(stream_id) != ask_type):
+        system_prompt_body = LLM_ASK_QUERY_TYPE.get(ask_type, "send me 'Unknown'")
+        system_content = SYSTEM_PROMPT_HEADER + system_prompt_body + SYSTEM_PROMPT_FOOTER
+        _ASK_CHATGPT_MESSAGES[stream_id] = [{"role": "system", "content": system_content}]
+        _ASK_CHATGPT_LAST_TYPE[stream_id] = ask_type
+
+    messages = _ASK_CHATGPT_MESSAGES[stream_id]
+    messages.append({"role": "user", "content": prompt})
+
     if use_local:
-        return ask_lmstudio(ask_type, prompt, temperature)
-    
-    # Default OpenAI behavior
-    system_prompt_body = LLM_ASK_QUERY_TYPE.get(ask_type, "send me 'Unknown'")
-    openai_client = create_openai_client()
-    response = openai_client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT_HEADER + system_prompt_body + SYSTEM_PROMPT_FOOTER},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=temperature,
-        top_p=1,
-        frequency_penalty=0,
-        presence_penalty=0,
-        # max_tokens=max_tokens
-    )
-    return response.choices[0].message.content.strip()
+        payload = {
+            "model": LMSTUDIO_MODEL,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+        try:
+            response = requests.post(LMSTUDIO_API_URL, json=payload)
+            response.raise_for_status()
+            response_json = response.json()
+            content = response_json['choices'][0]['message']['content'].strip()
+            messages.append({"role": "assistant", "content": content})
+            return content
+        except Exception as e:
+            print(f"Error calling LMStudio API: {str(e)}")
+            return json.dumps({"result": f"Error: {str(e)}"})
+    else:
+        openai_client = create_openai_client()
+        response = openai_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0,
+            # max_tokens=max_tokens
+        )
+        content = response.choices[0].message.content.strip()
+        messages.append({"role": "assistant", "content": content})
+        return content

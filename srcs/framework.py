@@ -344,164 +344,137 @@ def explain_endpoint(endpoint, use_local=False):
 
 def visualize_dependency_graph(service):
     from pyvis.network import Network
-    import html
+    import os
 
+    # 노드와 엣지 초기화
     id_to_label = {}
     id_to_type = {}
+    edges = []
 
+    # 서비스 노드 추가
     id_to_label[service.id] = service.name
     id_to_type[service.id] = "service"
 
+    # 파일 및 엔드포인트 노드 추가
     for endpoint in service.endpoints:
+        # 파일 노드 추가 (파일 이름만 사용)
+        file_name = os.path.basename(endpoint.file_path)  # 파일 이름 추출
+        file_node_id = f"file::{file_name}"
+        if file_node_id not in id_to_label:
+            id_to_label[file_node_id] = f"📄 {file_name}"
+            id_to_type[file_node_id] = "file"
+
+        # 엔드포인트 노드 추가
         id_to_label[endpoint.id] = f"{endpoint.method} {endpoint.path}"
         id_to_type[endpoint.id] = "endpoint"
-        for from_id, to_ids in endpoint.dependencies.describe().items():
-            id_to_label[from_id] = next(
-                (f"{ep.method} {ep.path}" for ep in service.endpoints if ep.id == from_id),
-                from_id
-            )
-            id_to_type[from_id] = "endpoint"
-            for to_id in to_ids:
-                id_to_label[to_id] = next(
-                    (f"{ep.method} {ep.path}" for ep in service.endpoints if ep.id == to_id),
-                    to_id
-                )
-                id_to_type[to_id] = "endpoint"
 
-    if service.database:
-        id_to_label[service.database.id] = f"DB: {service.database.db_type}"
-        id_to_type[service.database.id] = "database"
+        # 서비스 → 파일 엣지
+        edges.append((service.id, file_node_id))
 
-    edges = []
-    for from_id, to_ids in service.dependencies.describe().items():
-        for to_id in to_ids:
-            edges.append((from_id, to_id))
-    for endpoint in service.endpoints:
-        for from_id, to_ids in endpoint.dependencies.describe().items():
-            for to_id in to_ids:
-                edges.append((from_id, to_id))
-    if service.database:
-        for from_id, to_ids in service.database.dependencies.describe().items():
-            for to_id in to_ids:
-                edges.append((from_id, to_id))
+        # 파일 → 엔드포인트 엣지
+        edges.append((file_node_id, endpoint.id))
 
-    net = Network(
-        height="1000px",
-        width="100%",
-        directed=True,
-        notebook=False,
-        bgcolor="#ffffff",
-        font_color="#222222"
-    )
+        # 엔드포인트 간 의존성 엣지
+        for dep_id in endpoint.dependencies.describe().get(endpoint.id, []):
+            edges.append((endpoint.id, dep_id))
 
+    # 네트워크 생성
+    net = Network(height="900px", width="100%", directed=True, notebook=False)
+
+    # 계층적 레이아웃 설정
     net.set_options("""
     {
-    "physics": { "enabled": false },
-    "layout": {
-        "improvedLayout": true,
-        "hierarchical": {
-        "enabled": true,
-        "direction": "UD",
-        "levelSeparation": 400,
-        "nodeSpacing": 300,
-        "treeSpacing": 600,
-        "sortMethod": "hubsize"
-        }
-    },
-    "nodes": {
-        "font": { "size": 22, "color": "#222222", "face": "Segoe UI" },
-        "borderWidth": 2,
-        "borderWidthSelected": 4,
-        "color": {
-        "border": "#bdbdbd",
-        "background": "#e3f2fd",
-        "highlight": { "border": "#1976d2", "background": "#bbdefb" },
-        "hover": { "border": "#388e3c", "background": "#c8e6c9" }
+        "layout": {
+            "hierarchical": {
+                "enabled": true,
+                "direction": "UD",
+                "sortMethod": "hubsize"
+            }
         },
-        "shadow": false,
-        "shape": "box",
-        "margin": 20,
-        "scaling": {
-        "min": 10,
-        "max": 30,
-        "label": { "enabled": false }
+        "physics": {
+            "enabled": false
+        },
+        "interaction": {
+            "hover": true,
+            "tooltipDelay": 50,
+            "navigationButtons": true
+        },
+        "nodes": {
+            "font": {
+                "size": 16,
+                "color": "#343434"
+            },
+            "borderWidth": 2,
+            "shape": "box"
+        },
+        "edges": {
+            "color": {
+                "color": "#cccccc",
+                "highlight": "#ff9800"
+            },
+            "arrows": {
+                "to": {
+                    "enabled": true,
+                    "scaleFactor": 1.2
+                }
+            },
+            "smooth": {
+                "enabled": false
+            }
         }
-    },
-    "edges": {
-        "color": "#90caf9",
-        "width": 2.5,
-        "arrows": { "to": { "enabled": true, "scaleFactor": 1.2 } },
-        "smooth": { "enabled": true, "type": "cubicBezier" },
-        "shadow": false
-    },
-    "interaction": {
-        "hover": true,
-        "tooltipDelay": 30,
-        "navigationButtons": true,
-        "keyboard": true
-    }
     }
     """)
 
+    # 노드 색상 설정
     color_map = {
-        "service": "#bbdefb",
-        "endpoint": "#c8e6c9",
-        "database": "#ffe0b2"
-    }
-    shape_map = {
-        "service": "box",
-        "endpoint": "ellipse",
-        "database": "database"
+        "service": "#bbdefb",  # 서비스 노드: 파란색
+        "file": "#fff9c4",     # 파일 노드: 노란색
+        "endpoint": "#c8e6c9"  # 엔드포인트 노드: 초록색
     }
 
+    # 노드 추가 (툴팁에 줄바꿈 문자 사용)
     for node_id, label in id_to_label.items():
         node_type = id_to_type.get(node_id, "endpoint")
+        title = ""
         if node_type == "service":
-            service_obj = service
             title = (
                 "Service\n"
-                f"Name: {service_obj.name}\n"
-                f"Framework: {service_obj.framework}\n"
-                f"Main Source: {service_obj.main_source}\n"
-                f"Root Dir: {service_obj.root_directory}"
+                f"Name: {service.name}\n"
+                f"Root Directory: {service.root_directory}\n"
+                f"Main Source: {service.main_source}\n"
+                f"Framework: {service.framework}\n"
+                f"Endpoints: {len(service.endpoints)}"
             )
+        elif node_type == "file":
+            title = f"File: {label}"
         elif node_type == "endpoint":
-            endpoint_obj = next((ep for ep in service.endpoints if ep.id == node_id), None)
-            if endpoint_obj:
-                desc = getattr(endpoint_obj, 'description', '')
+            endpoint = next((ep for ep in service.endpoints if ep.id == node_id), None)
+            if endpoint:
+                desc = getattr(endpoint, 'description', '')
                 if desc:
-                    desc = desc.replace('\r\n', '\n').replace('\r', '\n').replace('<br>', '\n')
+                    # \n로 줄바꿈 문자로 치환 (이미 <br>가 포함되어 있다면)
+                    desc = desc.replace('<br>', '\n')
                 title = (
                     "Endpoint\n"
-                    f"Path: {endpoint_obj.path}\n"
-                    f"Method: {endpoint_obj.method}\n"
-                    f"File: {endpoint_obj.file_path}\n"
-                    f"Params: {getattr(endpoint_obj, 'params', '')}\n"
-                    f"Response: {getattr(endpoint_obj, 'response_type', '')}\n"
+                    f"Path: {endpoint.path}\n"
+                    f"Method: {endpoint.method}\n"
+                    f"File: {endpoint.file_path}\n"
+                    f"Params: {getattr(endpoint, 'params', 'N/A')}\n"
+                    f"Response: {getattr(endpoint, 'response_type', 'N/A')}\n"
                     f"Description: {desc}"
                 )
             else:
                 title = label
-        elif node_type == "database":
-            db_obj = service.database
-            title = (
-                "Database\n"
-                f"Type: {db_obj.db_type}\n"
-                f"Purpose: {db_obj.purpose}\n"
-                f"Conn: {db_obj.connection_string}"
-            )
-        else:
-            title = label
 
         net.add_node(
             node_id,
             label=label,
+            title=title,  # title에 줄바꿈 문자가 포함됨
             color=color_map.get(node_type, "#e0e0e0"),
-            shape=shape_map.get(node_type, "ellipse"),
+            shape="ellipse" if node_type == "endpoint" else "box",
             font={"size": 22, "color": "#222222", "face": "Segoe UI"},
             borderWidth=2,
             shadow=False,
-            title=title  # title에 \n을 사용
         )
 
     for from_id, to_id in edges:
@@ -515,13 +488,12 @@ def visualize_dependency_graph(service):
         )
 
     net.write_html("dependency_graph.html")
-
-    # HTML 파일 post-process: .vis-tooltip 스타일 커스터마이즈
+    
+    # HTML 파일 post-process: 툴팁 스타일 및 자동 줄바꿈 적용
     html_path = "dependency_graph.html"
     with open(html_path, "r", encoding="utf-8") as f:
         html_content = f.read()
 
-    # 툴팁 스타일: 최대너비, 자동 줄바꿈, 스크롤, 폰트 등
     custom_css = """
     <style>
     .vis-tooltip {
@@ -536,11 +508,10 @@ def visualize_dependency_graph(service):
     """
 
     html_content = html_content.replace("</head>", custom_css + "\n</head>")
-
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print("dependency_graph.html generated.")
-    
+    print("dependency_graph.html generated with custom tooltip styling.")
+
 def lookup_endpoint_id_by_path(service, path):
     method = path.split(":")[0]
     path = path.split(":")[1]
@@ -684,6 +655,12 @@ def main():
         print(f"\n[Description] {endpoint.path}")
         print(json.dumps(desc, indent=2))
         update_endpoint_dependencies(service, endpoint, desc.get("dependencies", []))
+    
+    # Save service as pickle
+    
+    import pickle
+    with open("service.pkl", "wb") as f:
+        pickle.dump(service, f)
     
     # 시각화
     visualize_dependency_graph(service)
