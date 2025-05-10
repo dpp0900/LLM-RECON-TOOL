@@ -655,13 +655,7 @@ def main():
         print(f"\n[Description] {endpoint.path}")
         print(json.dumps(desc, indent=2))
         update_endpoint_dependencies(service, endpoint, desc.get("dependencies", []))
-    
-    # Save service as pickle
-    
-    import pickle
-    with open("service.pkl", "wb") as f:
-        pickle.dump(service, f)
-    
+
     # 시각화
     visualize_dependency_graph(service)
 
